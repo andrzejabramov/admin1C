@@ -1,0 +1,18 @@
+# Чувствительные данные
+*.pgpass
+*.key
+*.pem
+secrets/
+credentials/
+.env
+*.enc
+
+# Временные и системные файлы
+*.tmp *.swp *~ .DS_Store
+__pycache__/ *.pyc .vscode/ .idea/
+
+# Логи и бэкапы
+*.log logs/ backup/ backups/
+
+# Бинарные файлы 1С/БД
+*.dump *.dt *.dtl
