@@ -30,3 +30,16 @@ def get_backup_dir() -> Path:
 if __name__ == "__main__":
     print(f"Версия: {load_version()}")
     print(f"ИБ: {load_ib_list()}")
+
+# SSL Configuration
+SSL_DOMAIN = "bases.atotx.ru"
+SSL_CERT_PATH = f"/etc/letsencrypt/live/{SSL_DOMAIN}"
+SSL_LOG_PATH = "/var/log/1c-admin/ssl.log"
+
+def get_ssl_domain() -> str:
+    """Возвращает домен для SSL-сертификатов"""
+    return SSL_DOMAIN
+
+def get_ssl_cert_path() -> Path:
+    """Возвращает путь к сертификатам"""
+    return Path(SSL_CERT_PATH)
