@@ -16,3 +16,26 @@ __pycache__/ *.pyc .vscode/ .idea/
 
 # Бинарные файлы 1С/БД
 *.dump *.dt *.dtl
+
+# === Python ===
+venv/
+ENV/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/

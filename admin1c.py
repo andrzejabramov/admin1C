@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""
+1C Server Admin Toolkit — единая точка входа для управления сервером 1С
+Гибридная архитектура: Python (управление) + Bash (низкоуровневые операции)
+"""
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+from lib.config import load_version, load_ib_list
+
+BASE_DIR = Path(__file__).resolve().parent
+ENGINES_DIR = BASE_DIR / "engines"
+
+def run_engine(engine_name: str, args: list = None) -> int:
+    """
+    Запускает bash-движок из папки engines/
+    Возвращает код выхода скрипта
+    """
+    engine_path = ENGINES_DIR / engine_name
+    if not engine_path.exists():
+        print(f"❌ Движок не найден: {engine_path}", file=sys.stderr)
+        return 1
+    
+    cmd = [str(engine_path)]
+    if args:
+        cmd.extend(args)
+    
+    try:
+        result = subprocess.run(cmd, check=False)
+        return result.returncode
+    except Exception as e:
+        print(f"❌ Ошибка выполнения: {e}", file=sys.stderr)
+        return 1
+
+def cmd_backup(args):
+    """Команда: бэкап ИБ"""
+    format_map = {"dump": "backup_dump.sh", "sql": "backup_sql.sh"}
+    engine = format_map.get(args.format)
+    
+    if not engine:
+        print(f"❌ Неизвестный формат: {args.format}", file=sys.stderr)
+        return 1
+    
+    if args.all:
+        ib_list = load_ib_list()
+        if not ib_list:
+            print("⚠️ Список ИБ пуст (ib_list.conf)", file=sys.stderr)
+            return 1
+        
+        print(f"📦 Создание бэкапов для {len(ib_list)} ИБ в формате {args.format}...")
+        for ib in ib_list:
+            print(f"  → {ib}")
+            run_engine(engine, ["--ib", ib])
+    elif args.ib:
+        print(f"📦 Бэкап ИБ '{args.ib}' в формате {args.format}...")
+        run_engine(engine, ["--ib", args.ib.strip()])
+    else:
+        print("❌ Укажите --all или --ib <имя_ИБ>", file=sys.stderr)
+        return 1
+    
+    return 0
+
+def cmd_sessions(args):
+    """Команда: управление сессиями"""
+    print("🧹 Очистка зависших сессий...")
+    return run_engine("cleanup.sh")
+
+def cmd_cloud(args):
+    """Команда: работа с облаком"""
+    print("☁️ Выгрузка в облако...")
+    return run_engine("cloud_upload.sh")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="1C Server Admin Toolkit",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {load_version()}"
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Команды")
+    
+    # backup
+    backup_parser = subparsers.add_parser("backup", help="Создание резервных копий ИБ")
+    backup_parser.add_argument(
+        "--format", choices=["dump", "sql"], required=True, help="Формат бэкапа: dump (pg_dump) или sql (pg_dump | gzip)"
+    )
+    group = backup_parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--all", action="store_true", help="Все ИБ из ib_list.conf")
+    group.add_argument("--ib", type=str, help="Конкретная ИБ")
+    backup_parser.set_defaults(func=cmd_backup)
+    
+    # sessions
+    sessions_parser = subparsers.add_parser("sessions", help="Управление сессиями")
+    sessions_parser.add_argument("action", choices=["cleanup"], help="Действие")
+    sessions_parser.set_defaults(func=cmd_sessions)
+    
+    # cloud
+    cloud_parser = subparsers.add_parser("cloud", help="Работа с облачным хранилищем")
+    cloud_parser.add_argument("action", choices=["upload"], help="Действие")
+    cloud_parser.set_defaults(func=cmd_cloud)
+    
+    # Парсим аргументы
+    args = parser.parse_args()
+    
+    # Выполняем команду
+    sys.exit(args.func(args))
+
+if __name__ == "__main__":
+    main()
