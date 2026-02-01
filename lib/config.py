@@ -4,6 +4,15 @@ from typing import List
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# SSL Configuration
+SSL_DOMAIN = "bases.atotx.ru"
+SSL_CERT_PATH = f"/etc/letsencrypt/live/{SSL_DOMAIN}"
+SSL_LOG_PATH = "/var/log/1c-admin/ssl.log"
+
+# Backup Configuration
+BACKUP_ROOT = Path("/var/backups/1c")
+BACKUP_LOG = Path("/var/log/1c-admin/backup.log")
+
 def load_version() -> str:
     version_file = BASE_DIR / ".version"
     try:
@@ -24,17 +33,9 @@ def load_ib_list() -> List[str]:
         pass
     return ib_list
 
-def get_backup_dir() -> Path:
-    return BASE_DIR / "backups"
-
-if __name__ == "__main__":
-    print(f"Версия: {load_version()}")
-    print(f"ИБ: {load_ib_list()}")
-
-# SSL Configuration
-SSL_DOMAIN = "bases.atotx.ru"
-SSL_CERT_PATH = f"/etc/letsencrypt/live/{SSL_DOMAIN}"
-SSL_LOG_PATH = "/var/log/1c-admin/ssl.log"
+def get_backup_dir(ib_name: str) -> Path:
+    """Возвращает путь к директории бэкапов для конкретной ИБ"""
+    return BACKUP_ROOT / ib_name
 
 def get_ssl_domain() -> str:
     """Возвращает домен для SSL-сертификатов"""
@@ -43,3 +44,9 @@ def get_ssl_domain() -> str:
 def get_ssl_cert_path() -> Path:
     """Возвращает путь к сертификатам"""
     return Path(SSL_CERT_PATH)
+
+if __name__ == "__main__":
+    print(f"Версия: {load_version()}")
+    print(f"ИБ: {load_ib_list()}")
+    print(f"SSL домен: {get_ssl_domain()}")
+    print(f"Корень бэкапов: {BACKUP_ROOT}")

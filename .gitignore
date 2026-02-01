@@ -39,3 +39,6 @@ coverage.xml
 *.cover
 *.log
 .pytest_cache/
+
+# Database configuration (sensitive data)
+engines/db_config.sh

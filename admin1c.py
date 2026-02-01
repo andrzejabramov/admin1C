@@ -35,14 +35,7 @@ def run_engine(engine_name: str, args: list = None) -> int:
         return 1
 
 def cmd_backup(args):
-    """Команда: бэкап ИБ"""
-    format_map = {"dump": "backup_dump.sh", "sql": "backup_sql.sh"}
-    engine = format_map.get(args.format)
-    
-    if not engine:
-        print(f"❌ Неизвестный формат: {args.format}", file=sys.stderr)
-        return 1
-    
+    """Команда: бэкап ИБ через единый движок backup.sh"""
     if args.all:
         ib_list = load_ib_list()
         if not ib_list:
@@ -51,11 +44,17 @@ def cmd_backup(args):
         
         print(f"📦 Создание бэкапов для {len(ib_list)} ИБ в формате {args.format}...")
         for ib in ib_list:
-            print(f"  → {ib}")
-            run_engine(engine, ["--ib", ib])
+            print(f"\n→ ИБ: {ib}")
+            cmd_args = ["--format", args.format, "--ib", ib]
+            if args.dry_run:
+                cmd_args.append("--dry-run")
+            run_engine("backup.sh", cmd_args)
     elif args.ib:
         print(f"📦 Бэкап ИБ '{args.ib}' в формате {args.format}...")
-        run_engine(engine, ["--ib", args.ib.strip()])
+        cmd_args = ["--format", args.format, "--ib", args.ib.strip()]
+        if args.dry_run:
+            cmd_args.append("--dry-run")
+        run_engine("backup.sh", cmd_args)
     else:
         print("❌ Укажите --all или --ib <имя_ИБ>", file=sys.stderr)
         return 1
@@ -85,7 +84,7 @@ def cmd_ssl(args):
         print(f"❌ Неизвестное действие: {action}", file=sys.stderr)
         return 1
     
-    domain = get_ssl_domain()  # ← ИСПРАВЛЕНО: используем правильную функцию
+    domain = get_ssl_domain()
     
     print(f"🔒 Управление SSL для домена: {domain}")
     print(f"   Действие: {action}")
@@ -106,11 +105,12 @@ def main():
     # backup
     backup_parser = subparsers.add_parser("backup", help="Создание резервных копий ИБ")
     backup_parser.add_argument(
-        "--format", choices=["dump", "sql"], required=True, help="Формат бэкапа: dump (pg_dump) или sql (pg_dump | gzip)"
+        "--format", choices=["dump", "sql"], required=True, help="Формат бэкапа:\n  dump - кастомный формат pg_dump (-Fc), НЕ блокирует ИБ\n  sql  - сжатый текстовый дамп (.sql.gz), МОЖЕТ блокировать ИБ"
     )
     group = backup_parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--all", action="store_true", help="Все ИБ из ib_list.conf")
     group.add_argument("--ib", type=str, help="Конкретная ИБ")
+    backup_parser.add_argument("--dry-run", action="store_true", help="Тестовый прогон без реального создания бэкапа")
     backup_parser.set_defaults(func=cmd_backup)
     
     # sessions
