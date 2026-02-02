@@ -104,8 +104,8 @@ SIZE=$(du -h "$BACKUP_FILE" 2>/dev/null | cut -f1)
 log "✅ Бэкап завершён: $BACKUP_FILE ($SIZE)"
 
 # Ротация: удалить бэкапы старше 30 дней для этой ИБ
-log "Очистка старых бэкапов (старше 30 дней)..."
-find "$BACKUP_ROOT/$IB_NAME" -maxdepth 1 -type d -mtime +30 -print0 2>/dev/null | \
+log "Очистка старых бэкапов (старше 5 дней)..."
+find "$BACKUP_ROOT/$IB_NAME" -maxdepth 1 -type d -mtime +5 -print0 2>/dev/null | \
   while IFS= read -r -d '' dir; do
     log "Удаление: $dir"
     rm -rf "$dir"

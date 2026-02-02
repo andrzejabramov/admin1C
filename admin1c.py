@@ -1,139 +1,77 @@
-#!/usr/bin/env python3
+#!/usr/local/bin/python3
 """
-1C Server Admin Toolkit — единая точка входа для управления сервером 1С
-Гибридная архитектура: Python (управление) + Bash (низкоуровневые операции)
+admin1c.py — централизованный инструмент администрирования 1С
 """
-
-import argparse
-import subprocess
-import sys
+import subprocess, sys, argparse, os
 from pathlib import Path
-from lib.config import load_version, load_ib_list, get_ssl_domain
+from datetime import datetime
 
-BASE_DIR = Path(__file__).resolve().parent
-ENGINES_DIR = BASE_DIR / "engines"
+IB_LIST_PATH = "/opt/1cv8/scripts/ib_list.conf"
+BACKUP_SCRIPT = "/opt/1cv8/scripts/engines/backup.sh"
+LOG_DIR = "/var/log/1c-admin"
 
-def run_engine(engine_name: str, args: list = None) -> int:
-    """
-    Запускает bash-движок из папки engines/
-    Возвращает код выхода скрипта
-    """
-    engine_path = ENGINES_DIR / engine_name
-    if not engine_path.exists():
-        print(f"❌ Движок не найден: {engine_path}", file=sys.stderr)
-        return 1
-    
-    cmd = [str(engine_path)]
-    if args:
-        cmd.extend(args)
-    
+class Colors:
+    GREEN = "\033[92m"; RED = "\033[91m"; YELLOW = "\033[93m"
+    BLUE = "\033[94m"; BOLD = "\033[1m"; END = "\033[0m"
+
+def color(text, col):
+    return f"{col}{text}{Colors.END}" if sys.stdout.isatty() else text
+
+def load_ib_list(path=IB_LIST_PATH):
+    if not Path(path).exists():
+        print(color(f"❌ Файл не найден: {path}", Colors.RED)); sys.exit(1)
+    with open(path) as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+def run_backup(ib_name, format_type):
+    cmd = ["sudo", "-u", "usr1cv8", BACKUP_SCRIPT, "--ib", ib_name, "--format", format_type]
     try:
-        result = subprocess.run(cmd, check=False)
-        return result.returncode
+        result = subprocess.run(cmd, stdout=None, stderr=None, timeout=3600)
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        print(color(f"\n❌ Таймаут: {ib_name} (>60 мин)", Colors.RED)); return False
+    except KeyboardInterrupt:
+        print(color(f"\n⚠️ Прервано: {ib_name}", Colors.YELLOW)); raise
     except Exception as e:
-        print(f"❌ Ошибка выполнения: {e}", file=sys.stderr)
-        return 1
-
-def cmd_backup(args):
-    """Команда: бэкап ИБ через единый движок backup.sh"""
-    if args.all:
-        ib_list = load_ib_list()
-        if not ib_list:
-            print("⚠️ Список ИБ пуст (ib_list.conf)", file=sys.stderr)
-            return 1
-        
-        print(f"📦 Создание бэкапов для {len(ib_list)} ИБ в формате {args.format}...")
-        for ib in ib_list:
-            print(f"\n→ ИБ: {ib}")
-            cmd_args = ["--format", args.format, "--ib", ib]
-            if args.dry_run:
-                cmd_args.append("--dry-run")
-            run_engine("backup.sh", cmd_args)
-    elif args.ib:
-        print(f"📦 Бэкап ИБ '{args.ib}' в формате {args.format}...")
-        cmd_args = ["--format", args.format, "--ib", args.ib.strip()]
-        if args.dry_run:
-            cmd_args.append("--dry-run")
-        run_engine("backup.sh", cmd_args)
-    else:
-        print("❌ Укажите --all или --ib <имя_ИБ>", file=sys.stderr)
-        return 1
-    
-    return 0
-
-def cmd_sessions(args):
-    """Команда: управление сессиями"""
-    print("🧹 Очистка зависших сессий...")
-    return run_engine("cleanup.sh")
-
-def cmd_cloud(args):
-    """Команда: работа с облаком"""
-    print("☁️ Выгрузка в облако...")
-    return run_engine("cloud_upload.sh")
-
-def cmd_ssl(args):
-    """Команда: управление SSL-сертификатами"""
-    actions = {
-        "check": ["check"],
-        "status": ["status"],
-        "renew": ["renew"] + (["--dry-run"] if args.dry_run else [])
-    }
-    
-    action = args.action
-    if action not in actions:
-        print(f"❌ Неизвестное действие: {action}", file=sys.stderr)
-        return 1
-    
-    domain = get_ssl_domain()
-    
-    print(f"🔒 Управление SSL для домена: {domain}")
-    print(f"   Действие: {action}")
-    
-    return run_engine("ssl.sh", actions[action])
+        print(color(f"\n❌ Ошибка: {ib_name} — {e}", Colors.RED)); return False
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="1C Server Admin Toolkit",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {load_version()}"
-    )
-    
-    subparsers = parser.add_subparsers(dest="command", required=True, help="Команды")
-    
-    # backup
-    backup_parser = subparsers.add_parser("backup", help="Создание резервных копий ИБ")
-    backup_parser.add_argument(
-        "--format", choices=["dump", "sql"], required=True, help="Формат бэкапа:\n  dump - кастомный формат pg_dump (-Fc), НЕ блокирует ИБ\n  sql  - сжатый текстовый дамп (.sql.gz), МОЖЕТ блокировать ИБ"
-    )
+    parser = argparse.ArgumentParser(description=color("Администрирование 1С", Colors.BOLD))
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    backup_parser = subparsers.add_parser("backup", help="Создать резервные копии")
+    backup_parser.add_argument("--format", choices=["dump", "sql"], required=True)
     group = backup_parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--all", action="store_true", help="Все ИБ из ib_list.conf")
-    group.add_argument("--ib", type=str, help="Конкретная ИБ")
-    backup_parser.add_argument("--dry-run", action="store_true", help="Тестовый прогон без реального создания бэкапа")
-    backup_parser.set_defaults(func=cmd_backup)
-    
-    # sessions
-    sessions_parser = subparsers.add_parser("sessions", help="Управление сессиями")
-    sessions_parser.add_argument("action", choices=["cleanup"], help="Действие")
-    sessions_parser.set_defaults(func=cmd_sessions)
-    
-    # cloud
-    cloud_parser = subparsers.add_parser("cloud", help="Работа с облачным хранилищем")
-    cloud_parser.add_argument("action", choices=["upload"], help="Действие")
-    cloud_parser.set_defaults(func=cmd_cloud)
-    
-    # ssl
-    ssl_parser = subparsers.add_parser("ssl", help="Управление SSL-сертификатами")
-    ssl_parser.add_argument("action", choices=["check", "status", "renew"], help="Действие")
-    ssl_parser.add_argument("--dry-run", action="store_true", help="Только тестовое обновление без реальных изменений")
-    ssl_parser.set_defaults(func=cmd_ssl)
-    
-    # Парсим аргументы
+    group.add_argument("--ib", nargs="+", metavar="ИБ")
+    group.add_argument("--all", action="store_true")
     args = parser.parse_args()
-    
-    # Выполняем команду
-    sys.exit(args.func(args))
+
+    if args.command == "backup":
+        os.makedirs(LOG_DIR, exist_ok=True)
+        ib_list = args.ib if args.ib else load_ib_list()
+        if not ib_list: print(color("❌ Список ИБ пуст", Colors.RED)); sys.exit(1)
+        
+        print(color(f"\n📦 Начало бэкапа {len(ib_list)} ИБ (формат: {args.format})", Colors.BLUE))
+        print(color("=" * 70, Colors.BLUE))
+        
+        success, failed = [], []
+        for i, ib in enumerate(ib_list, 1):
+            print(color(f"\n[{i}/{len(ib_list)}] 🔄 {ib}", Colors.YELLOW))
+            print(color("-" * 70, Colors.BLUE))
+            try:
+                if run_backup(ib, args.format): success.append(ib)
+                else: failed.append(ib)
+            except KeyboardInterrupt:
+                print(color("\n\n⚠️ Прервано пользователем", Colors.YELLOW)); sys.exit(130)
+
+        print(color("\n" + "=" * 70, Colors.BLUE))
+        print(color(f"✅ Успешно: {len(success)}/{len(ib_list)}", Colors.GREEN))
+        if failed:
+            print(color(f"❌ Ошибки: {len(failed)}", Colors.RED))
+            for ib in failed: print(f"   - {ib}")
+        print(color("=" * 70, Colors.BLUE))
+        sys.exit(0 if not failed else 1)
 
 if __name__ == "__main__":
-    main()
+    try: main()
+    except KeyboardInterrupt:
+        print(color("\n\n⚠️ Прервано пользователем", Colors.YELLOW)); sys.exit(130)
