@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ==============================================================================
-# rm.sh — безопасное удаление бэкапов информационных баз 1С
-# ==============================================================================
-
 BACKUP_ROOT="/var/backups/1c"
-LOG_FILE="/var/log/1c_backup_rm.log"
+LOG_FILE="/var/backups/1c/rm.log"
 DRY_RUN=false
 CONFIRMED=false
 
@@ -15,7 +11,7 @@ log() {
 }
 
 usage() {
-    cat <<EOF
+    cat <<USAGE
 Использование: $0 [ОПЦИИ]
 
 Опции:
@@ -23,166 +19,99 @@ usage() {
   --timestamp <метка>  Удалить конкретный бэкап (формат: ГГГГММДД_ЧЧММСС)
   --older-than <дата>  Удалить бэкапы старше даты (формат: ГГГГММДД)
   --all                Удалить ВСЕ бэкапы всех ИБ
-  --dry-run            Симуляция без фактического удаления
-  --confirm            Обязательное подтверждение перед удалением
+  --dry-run            Симуляция без фактического удаления (без подтверждения!)
+  --confirm            Обязательное подтверждение перед удалением (только для реальных операций)
   --help               Показать эту справку
 
 Примеры:
-  $0 --ib artel_2025 --confirm
-  $0 --ib artel_2025 --timestamp 20260202_182603 --confirm
-  $0 --ib artel_2025 --older-than 20260201 --dry-run
-  $0 --all --confirm
-EOF
+  $0 --ib artel_2025 --dry-run
+  $0 --ib artel_2025 --timestamp 20260203_205027 --confirm
+USAGE
     exit 1
 }
 
 validate_ib_name() {
-    local ib_name="$1"
-    if [[ ! -d "$BACKUP_ROOT/$ib_name" ]]; then
-        log "❌ Ошибка: ИБ '$ib_name' не найдена в $BACKUP_ROOT"
-        exit 1
-    fi
+    [[ -d "$BACKUP_ROOT/$1" ]] || { log "❌ ИБ '$1' не найдена в $BACKUP_ROOT"; exit 1; }
 }
 
 confirm_action() {
-    local msg="$1"
-    if [[ "$CONFIRMED" == false ]]; then
-        log "⚠️  Требуется подтверждение: $msg"
-        read -p "Подтвердите действие (yes/no): " answer
-        if [[ "$answer" != "yes" ]]; then
-            log "❌ Действие отменено пользователем"
-            exit 0
-        fi
-    fi
+    # В dry-run подтверждение НЕ требуется
+    [[ "$DRY_RUN" == true ]] && return
+    
+    [[ "$CONFIRMED" == true ]] && return
+    log "⚠️  Требуется подтверждение: $1"
+    read -p "Подтвердите действие (yes/no): " answer
+    [[ "$answer" == "yes" ]] || { log "❌ Отменено"; exit 0; }
 }
 
-# ==============================================================================
 # Парсинг аргументов
-# ==============================================================================
-
-if [[ $# -eq 0 ]]; then usage; fi
-
+[[ $# -eq 0 ]] && usage
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --ib)
-            IB_NAME="$2"
-            shift 2
-            ;;
-        --timestamp)
-            TIMESTAMP="$2"
-            shift 2
-            ;;
-        --older-than)
-            OLDER_THAN="$2"
-            shift 2
-            ;;
-        --all)
-            REMOVE_ALL=true
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            log "🔍 Режим симуляции (dry-run): файлы НЕ будут удалены"
-            shift
-            ;;
-        --confirm)
-            CONFIRMED=true
-            shift
-            ;;
-        --help)
-            usage
-            ;;
-        *)
-            log "❌ Неизвестный параметр: $1"
-            usage
-            ;;
+        --ib) IB_NAME="$2"; shift 2 ;;
+        --timestamp) TIMESTAMP="$2"; shift 2 ;;
+        --older-than) OLDER_THAN="$2"; shift 2 ;;
+        --all) REMOVE_ALL=true; shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        --confirm) CONFIRMED=true; shift ;;
+        --help) usage ;;
+        *) log "❌ Неизвестный параметр: $1"; usage ;;
     esac
 done
 
-# ==============================================================================
-# Валидация и выполнение
-# ==============================================================================
-
+# Удаление всех ИБ
 if [[ "${REMOVE_ALL:-false}" == true ]]; then
     confirm_action "УДАЛЕНИЕ ВСЕХ БЭКАПОВ ВСЕХ ИБ из $BACKUP_ROOT"
+    [[ "$DRY_RUN" == true ]] && log "🔍 Симуляция: файлы НЕ будут удалены"
+    
+    find "$BACKUP_ROOT" -mindepth 2 -maxdepth 2 -type d -name "20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9]" 2>/dev/null | sort | while read -r dir; do
+        if [[ "$DRY_RUN" == true ]]; then
+            log "  → $dir/"
+        else
+            rm -rf "$dir" && log "✅ Удалён: $dir/" || log "⚠️  Не удалён (права?): $dir/"
+        fi
+    done
+    exit 0
+fi
+
+[[ -z "${IB_NAME:-}" ]] && { log "❌ Требуется --ib <имя_ИБ>"; usage; }
+validate_ib_name "$IB_NAME"
+BACKUP_DIR="$BACKUP_ROOT/$IB_NAME"
+
+# Удаление конкретного бэкапа
+if [[ -n "${TIMESTAMP:-}" ]]; then
+    TARGET_DIR="$BACKUP_DIR/$TIMESTAMP"
+    [[ -d "$TARGET_DIR" ]] || {
+        log "❌ Бэкап '$TIMESTAMP' не найден в $BACKUP_DIR"
+        log "Доступные бэкапы:"
+        ls -1d "$BACKUP_DIR"/20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9] 2>/dev/null || echo "  (нет)"
+        exit 1
+    }
+    confirm_action "Удаление бэкапа '$IB_NAME' с меткой '$TIMESTAMP'"
+    [[ "$DRY_RUN" == true ]] && log "🔍 Симуляция: файлы НЕ будут удалены"
     
     if [[ "$DRY_RUN" == true ]]; then
-        log "Симуляция удаления всех ИБ:"
-        find "$BACKUP_ROOT" -type f \( -name "*.dump" -o -name "*.sql.gz" -o -name "*.dt" \) | while read -r file; do
-            log "  → $file"
-        done
+        log "Целевой бэкап: $TARGET_DIR"
+        find "$TARGET_DIR" -type f 2>/dev/null | while read -r f; do log "  → $f"; done
     else
-        log "Удаление всех бэкапов..."
-        find "$BACKUP_ROOT" -type f \( -name "*.dump" -o -name "*.sql.gz" -o -name "*.dt" \) -print -delete | while read -r file; do
-            log "✅ Удалён: $file"
-        done
+        rm -rf "$TARGET_DIR" && log "✅ Удалён: $TARGET_DIR" || log "⚠️  Ошибка удаления (права?): $TARGET_DIR"
     fi
     exit 0
 fi
 
-if [[ -z "${IB_NAME:-}" ]]; then
-    log "❌ Ошибка: требуется указать --ib <имя_ИБ> или --all"
-    usage
-fi
+# Удаление всех бэкапов ИБ
+confirm_action "УДАЛЕНИЕ ВСЕХ бэкапов ИБ '$IB_NAME'"
+[[ "$DRY_RUN" == true ]] && log "🔍 Симуляция: файлы НЕ будут удалены"
 
-validate_ib_name "$IB_NAME"
-BACKUP_DIR="$BACKUP_ROOT/$IB_NAME"
-
-if [[ -n "${TIMESTAMP:-}" ]]; then
-    # Удаление конкретного бэкапа по метке времени
-    pattern="${IB_NAME}_${TIMESTAMP}.*"
-    files=("$BACKUP_DIR"/$pattern)
-    
-    if [[ ! -e "${files[0]}" ]]; then
-        log "❌ Бэкапы с меткой '$TIMESTAMP' не найдены"
-        exit 1
-    fi
-    
-    confirm_action "Удаление бэкапа '$IB_NAME' с меткой '$TIMESTAMP'"
-    
-    for file in "${files[@]}"; do
-        [[ -e "$file" ]] || continue
-        if [[ "$DRY_RUN" == true ]]; then
-            log "🔍 Симуляция: $file"
-        else
-            rm -f "$file"
-            log "✅ Удалён: $file"
-        fi
+if [[ "$DRY_RUN" == true ]]; then
+    log "Будут удалены директории в: $BACKUP_DIR"
+    find "$BACKUP_DIR" -maxdepth 1 -type d -name "20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9]" 2>/dev/null | sort | while read -r dir; do
+        log "  → $dir/"
     done
-    
-elif [[ -n "${OLDER_THAN:-}" ]]; then
-    # Удаление бэкапов старше даты
-    cutoff=$(date -d "${OLDER_THAN} 00:00:00" +%s 2>/dev/null || date -j -f "%Y%m%d" "$OLDER_THAN" +%s 2>/dev/null || { log "❌ Неверный формат даты"; exit 1; })
-    
-    confirm_action "Удаление бэкапов '$IB_NAME' старше $OLDER_THAN"
-    
-    find "$BACKUP_DIR" -type f \( -name "*.dump" -o -name "*.sql.gz" -o -name "*.dt" \) | while read -r file; do
-        file_time=$(stat -c %Y "$file" 2>/dev/null || stat -f %m "$file" 2>/dev/null)
-        if [[ $file_time -lt $cutoff ]]; then
-            if [[ "$DRY_RUN" == true ]]; then
-                log "🔍 Симуляция: $file (старше $OLDER_THAN)"
-            else
-                rm -f "$file"
-                log "✅ Удалён: $file"
-            fi
-        fi
-    done
-    
 else
-    # Удаление ВСЕХ бэкапов ИБ
-    confirm_action "УДАЛЕНИЕ ВСЕХ бэкапов ИБ '$IB_NAME'"
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        log "Симуляция удаления всех бэкапов '$IB_NAME':"
-        find "$BACKUP_DIR" -type f \( -name "*.dump" -o -name "*.sql.gz" -o -name "*.dt" \) | while read -r file; do
-            log "  → $file"
-        done
-    else
-        log "Удаление всех бэкапов '$IB_NAME'..."
-        find "$BACKUP_DIR" -type f \( -name "*.dump" -o -name "*.sql.gz" -o -name "*.dt" \) -print -delete | while read -r file; do
-            log "✅ Удалён: $file"
-        done
-    fi
+    find "$BACKUP_DIR" -maxdepth 1 -type d -name "20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9]" 2>/dev/null | sort | while read -r dir; do
+        rm -rf "$dir" && log "✅ Удалён: $dir/" || log "⚠️  Не удалён (права?): $dir/"
+    done
 fi
 
 log "✅ Операция завершена"
