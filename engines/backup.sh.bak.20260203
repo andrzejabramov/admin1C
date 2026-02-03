@@ -5,10 +5,9 @@
 
 set -euo pipefail
 
-# === Определение директории скрипта ===
+# === Конфигурация ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_PATH="$SCRIPT_DIR/db_config.sh"
-
 [[ -f "$CONFIG_PATH" ]] || { echo "❌ Конфиг не найден: $CONFIG_PATH"; exit 1; }
 source "$CONFIG_PATH"
 
@@ -31,6 +30,13 @@ done
 [[ -z "${FORMAT:-}" ]] && { echo "❌ --format не указан"; exit 1; }
 [[ "$FORMAT" != "dump" && "$FORMAT" != "sql" ]] && { echo "❌ Формат должен быть: dump или sql"; exit 1; }
 
+# === Проверка существования ИБ в кластере (опционально) ===
+if command -v /opt/1cv8/x86_64/rac >/dev/null 2>&1; then
+    if ! sudo -u usr1cv8 /opt/1cv8/x86_64/rac infobase list --cluster="${PG_HOST}:${PG_PORT_RAC:-1545}" 2>/dev/null | grep -q "name=$IB_NAME"; then
+        echo "⚠️  ИБ '$IB_NAME' не найдена в кластере (продолжаю бэкап...)"
+    fi
+fi
+
 # === Создание директории бэкапа ===
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_DIR="$BACKUP_ROOT/$IB_NAME/$TIMESTAMP"
@@ -41,28 +47,16 @@ log "📁 Директория: $BACKUP_DIR"
 if [[ "$FORMAT" == "dump" ]]; then
     log "💾 Бэкап ИБ: $IB_NAME (формат: dump)"
     
-    # Получаем размер БД для прогресс-бара (игнорируем ошибки)
-    DB_SIZE=$(ssh -o StrictHostKeyChecking=accept-new -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
-        "PGPASSFILE=$REMOTE_PGPASS psql -h localhost -p $PG_PORT -U $PG_USER -d $IB_NAME -tAc \"SELECT pg_database_size('$IB_NAME');\"" 2>/dev/null || echo "")
+    # Получаем размер БД для прогресс-бара
+    DB_SIZE=$(ssh -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
+        "PGPASSFILE=$REMOTE_PGPASS psql -h localhost -p $PG_PORT -U $PG_USER -d $IB_NAME -tAc \"SELECT pg_database_size('$IB_NAME');\"" 2>/dev/null || echo "0")
     
-    # Очистка от пробелов
-    DB_SIZE="${DB_SIZE//[[:space:]]/}"
-    [[ "$DB_SIZE" =~ ^[0-9]+$ ]] || DB_SIZE=""
+    # Выполняем pg_dump с прогрессом
+    ssh -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
+        "PGPASSFILE=$REMOTE_PGPASS pg_dump -Fc -h localhost -p $PG_PORT -U $PG_USER \"$IB_NAME\"" | \
+        pv -f -n -s "${DB_SIZE}" 2>/dev/null | \
+        cat > "$BACKUP_DIR/backup.dump"
     
-    # Выполняем pg_dump с прогрессом (БЕЗ -n!)
-    if [[ -n "$DB_SIZE" && "$DB_SIZE" -gt 0 ]]; then
-        ssh -o StrictHostKeyChecking=accept-new -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
-            "PGPASSFILE=$REMOTE_PGPASS pg_dump -Fc -h localhost -p $PG_PORT -U $PG_USER $IB_NAME" 2>/dev/null | \
-            pv -f -s "$DB_SIZE" | \
-            cat > "$BACKUP_DIR/backup.dump"
-    else
-        ssh -o StrictHostKeyChecking=accept-new -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
-            "PGPASSFILE=$REMOTE_PGPASS pg_dump -Fc -h localhost -p $PG_PORT -U $PG_USER $IB_NAME" 2>/dev/null | \
-            pv -f | \
-            cat > "$BACKUP_DIR/backup.dump"
-    fi
-    
-    echo ""
     SIZE=$(du -h "$BACKUP_DIR/backup.dump" 2>/dev/null | cut -f1 || echo "N/A")
     log "✅ Завершён: $BACKUP_DIR/backup.dump ($SIZE)"
     exit 0
@@ -72,8 +66,8 @@ fi
 if [[ "$FORMAT" == "sql" ]]; then
     log "💾 Бэкап ИБ: $IB_NAME (формат: sql.gz)"
     
-    ssh -o StrictHostKeyChecking=accept-new -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
-        "PGPASSFILE=$REMOTE_PGPASS pg_dump -h localhost -p $PG_PORT -U $PG_USER $IB_NAME --no-owner --no-privileges" 2>/dev/null | \
+    ssh -i "$SSH_KEY" "$SSH_USER@$PG_HOST" \
+        "PGPASSFILE=$REMOTE_PGPASS pg_dump -h localhost -p $PG_PORT -U $PG_USER \"$IB_NAME\" --no-owner --no-privileges" | \
         gzip -c | \
         cat > "$BACKUP_DIR/backup.sql.gz"
     
