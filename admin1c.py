@@ -6,9 +6,33 @@ import subprocess, sys, argparse, os
 from pathlib import Path
 from datetime import datetime
 
+# admin1c.py — заготовка для интеграции исключений
+from core.exceptions import (
+    OrchestratorError,
+    BackupError,
+    RmError,
+    NotFoundError,
+    PermissionError
+)
+
 IB_LIST_PATH = "/opt/1cv8/scripts/ib_list.conf"
 BACKUP_SCRIPT = "/opt/1cv8/scripts/engines/backup.sh"
 LOG_DIR = "/var/log/1c-admin"
+
+def safe_call(func):
+    """Декоратор для централизованной обработки ошибок"""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except OrchestratorError as e:
+            print(f"❌ {e.message}", file=sys.stderr)
+            if e.details:
+                print(f"   Подробности: {e.details}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ {type(e).__name__}: {str(e)}", file=sys.stderr)
+            sys.exit(1)
+    return wrapper
 
 class Colors:
     GREEN = "\033[92m"; RED = "\033[91m"; YELLOW = "\033[93m"
