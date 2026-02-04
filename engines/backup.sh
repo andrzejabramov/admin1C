@@ -7,7 +7,7 @@ set -euo pipefail
 
 # === Определение директории скрипта ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_PATH="$SCRIPT_DIR/db_config.sh"
+CONFIG_PATH="$SCRIPT_DIR/config/db_config.sh"
 
 [[ -f "$CONFIG_PATH" ]] || { echo "❌ Конфиг не найден: $CONFIG_PATH"; exit 1; }
 source "$CONFIG_PATH"
