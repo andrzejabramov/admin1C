@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Подключаем конфиг
-CONFIG="$SCRIPT_DIR/config/storage.conf"
+CONFIG="$SCRIPT_DIR/config/storage.sh"
 [[ ! -f "$CONFIG" ]] && { echo "error=Конфиг $CONFIG не найден" >&2; exit 1; }
 source "$CONFIG"
 

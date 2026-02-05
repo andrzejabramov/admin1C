@@ -9,12 +9,12 @@ import argparse
 import importlib
 from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 def get_available_commands():
     """Динамически получить список доступных команд из interfaces/cli/"""
-    cli_dir = SCRIPTS_DIR / "interfaces" / "cli"
+    cli_dir = SCRIPTS_DIR / "commands"
     commands = []
     if cli_dir.exists():
         for f in cli_dir.glob("*.py"):
@@ -46,7 +46,7 @@ def main():
     
     # Динамическая маршрутизация через импорт
     try:
-        module_path = f"interfaces.cli.{args.command}"
+        module_path = f"commands.{args.command}"
         module = importlib.import_module(module_path)
         
         if not hasattr(module, "main"):
@@ -56,7 +56,7 @@ def main():
         return module.main(args.args)
         
     except ModuleNotFoundError as e:
-        cli_dir = SCRIPTS_DIR / "interfaces" / "cli"
+        cli_dir = SCRIPTS_DIR / "commands"
         print(f"❌ Команда '{args.command}' не найдена", file=sys.stderr)
         print(f"   Доступные команды: {', '.join(available_commands)}", file=sys.stderr)
         print(f"   Для добавления новой команды создайте: {cli_dir}/{args.command}.py", file=sys.stderr)

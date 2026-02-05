@@ -1,7 +1,12 @@
-# Сервис удаления бэкапов
-from adapters.bash_adapter import BashAdapter
+# services/rm_service.py
+"""
+Сервис для ручного удаления бэкапов информационных баз 1С
+"""
+
+from core.engine import run_engine
 from core.config import Config
 from typing import Optional, Dict
+
 
 class RmService:
     """
@@ -15,7 +20,6 @@ class RmService:
     
     def __init__(self, config=None):
         self.config = config or Config.load()
-        self.bash = BashAdapter(str(self.config.SCRIPTS_DIR))
         self.user = self.config.BACKUP_USER
     
     def remove_backup(
@@ -51,7 +55,6 @@ class RmService:
         elif confirm:
             cmd.append("--confirm")
         else:
-            # Без --confirm реальное удаление запрещено
             return {
                 "success": False,
                 "returncode": -1,
@@ -59,7 +62,8 @@ class RmService:
                 "stderr": "Требуется --confirm для реального удаления"
             }
         
-        return self.bash.execute("rm.sh", cmd, user=self.user)
+        # Замена: BashAdapter → run_engine()
+        return run_engine("rm.sh", cmd, user=self.user)
     
     def remove_all_backups(self, ib_name: str, confirm: bool = False) -> Dict[str, any]:
         """
@@ -83,7 +87,8 @@ class RmService:
                 "stderr": "Требуется --confirm для удаления всех бэкапов"
             }
         
-        return self.bash.execute("rm.sh", cmd, user=self.user)
+        # Замена: BashAdapter → run_engine()
+        return run_engine("rm.sh", cmd, user=self.user)
     
     def remove_all_backups_globally(self, confirm: bool = False) -> Dict[str, any]:
         """
@@ -106,4 +111,5 @@ class RmService:
                 "stderr": "Требуется --confirm для глобального удаления"
             }
         
-        return self.bash.execute("rm.sh", cmd, user=self.user)
+        # Замена: BashAdapter → run_engine()
+        return run_engine("rm.sh", cmd, user=self.user)
