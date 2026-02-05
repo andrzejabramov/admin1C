@@ -1,4 +1,3 @@
-`````Markdown
 # Структура проекта ib_1c
 
 Версия архитектуры: `refactor/project-structure`
@@ -7,8 +6,6 @@
 ---
 
 ## 🌳 Дерево проекта
-
-
 
 /opt/1cv8/scripts/
 ├── orchestrator.py # Точка входа CLI (единая команда ib_1c)
@@ -37,20 +34,20 @@
 │ └── storage.sh # BACKUP_DIR="/var/backups/1c"
 │
 ├── services/ # Уровень 1: чистая бизнес-логика (единый источник правды)
-│ ├── ___init___.py
+│ ├── **_init_**.py
 │ ├── backup_service.py # Логика бэкапов (независима от интерфейса)
 │ ├── rm_service.py # Логика ручного удаления копий
 │ ├── storage_service.py # Логика мониторинга хранилища (в разработке)
 │ └── validation.py # Валидация имён ИБ
 │
 ├── commands/ # Уровень 2: тонкие CLI-адаптеры
-│ ├── ___init___.py
+│ ├── **_init_**.py
 │ ├── backup.py # Адаптер команды 'backup'
 │ ├── rm.py # Адаптер команды 'rm'
 │ └── storage.py # Адаптер команды 'storage' (в разработке)
 │
 ├── core/ # Общие утилиты (не бизнес-логика)
-│ ├── ___init___.py
+│ ├── **_init_**.py
 │ ├── config.py # Единая точка конфигурации (версия, ИБ, пути)
 │ ├── engine.py # run_engine() — универсальный запуск скриптов
 │ ├── utils.py # Цвета терминала, логирование
@@ -61,10 +58,7 @@
 ├── backup.md # Детали работы с бэкапами
 └── structure.md # Настоящий документ (фиксация архитектуры)
 
-
-
 ---
-
 
 ## 📁 Описание компонентов
 
@@ -100,7 +94,7 @@
 
 **Примеры:**
 
-````bash
+```bash
 # Бэкап одной ИБ в формате dump
 ib_1c backup --format dump --ib artel_2025
 
@@ -109,7 +103,7 @@ ib_1c backup --format dump --ib artel_2025 oksana_2025 resug_2025
 
 # Симуляция без реального создания
 ib_1c backup --format dump --ib artel_2025 --dry-run
-`````
+```
 
 ## ⚙️ Спецификация сервисов
 
@@ -203,7 +197,3 @@ ib_1c storage --path /mnt/backup/1c
 | `validate.sh`      | Валидация состояния хранилища              | `services/storage_service.py` (план) |
 
 ---
-
-```
-
-```
