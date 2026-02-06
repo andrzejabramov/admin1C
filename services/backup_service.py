@@ -8,28 +8,20 @@ from core.engine import run_engine
 from core.config import Config
 
 
-def backup_ib(ib_name: str, format_type: str) -> Dict[str, any]:
+def backup_ib(ib_name: str, format_type: str, dry_run: bool = False) -> Dict[str, any]:
     """
     Создать бэкап одной информационной базы
     
-    Args:
-        ib_name: имя ИБ (например, 'artel_2025')
-        format_type: 'dump' или 'sql'
-    
-    Returns:
-        {
-            "success": bool,
-            "ib_name": str,
-            "format": str,
-            "stdout": str,
-            "stderr": str,
-            "returncode": int
-        }
+    Для реальных бэкапов используется потоковый вывод (прогресс через pv).
+    Для dry-run — захват вывода для парсинга.
     """
     config = Config.load()
     cmd = ["--ib", ib_name, "--format", format_type]
     
-    result = run_engine("backup.sh", cmd, user=config.BACKUP_USER)
+    # Потоковый вывод только для реальных операций (не для dry-run)
+    capture = dry_run
+    
+    result = run_engine("backup.sh", cmd, user=config.BACKUP_USER, capture_output=capture)
     
     return {
         "success": result["success"],
@@ -41,18 +33,11 @@ def backup_ib(ib_name: str, format_type: str) -> Dict[str, any]:
     }
 
 
-def backup_multiple(ib_list: List[str], format_type: str) -> List[Dict[str, any]]:
+def backup_multiple(ib_list: List[str], format_type: str, dry_run: bool = False) -> List[Dict[str, any]]:
     """
     Создать бэкапы для списка информационных баз (последовательно)
-    
-    Args:
-        ib_list: список имён ИБ
-        format_type: 'dump' или 'sql'
-    
-    Returns:
-        Список результатов для каждой ИБ
     """
     results = []
     for ib_name in ib_list:
-        results.append(backup_ib(ib_name, format_type))
+        results.append(backup_ib(ib_name, format_type, dry_run))
     return results

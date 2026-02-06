@@ -34,17 +34,16 @@ def main(args=None):
     print(f"\n📦 Начало бэкапа {len(parsed.ib)} ИБ (формат: {parsed.format})")
     print("=" * 70)
     
-    results = backup_multiple(parsed.ib, parsed.format)
+    # Вызов сервиса с потоковым выводом (прогресс отобразится напрямую)
+    results = backup_multiple(parsed.ib, parsed.format, dry_run=False)
     
     errors = []
     for idx, result in enumerate(results, 1):
         ib_name = result["ib_name"]
-        print(f"\n[{idx}/{len(results)}] 🔄 {ib_name}")
-        print("-" * 70)
-        
-        if result["success"]:
-            print(result["stdout"] or "✅ Бэкап завершён успешно")
-        else:
+        if not result["success"]:
+            # Ошибки всё равно нужно показать (они не прошли через потоковый вывод)
+            print(f"\n[{idx}/{len(results)}] ❌ {ib_name}")
+            print("-" * 70)
             print(f"❌ Ошибка: {result['stderr'] or 'Неизвестная ошибка'}", file=sys.stderr)
             errors.append(ib_name)
     
