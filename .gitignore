@@ -1,44 +1,41 @@
-# Чувствительные данные
-*.pgpass
-*.key
-*.pem
-secrets/
-credentials/
-.env
-*.enc
 
-# Временные и системные файлы
-*.tmp *.swp *~ .DS_Store
-__pycache__/ *.pyc .vscode/ .idea/
-
-# Логи и бэкапы
-*.log logs/ backup/ backups/
-
-# Бинарные файлы 1С/БД
-*.dump *.dt *.dtl
-
-# === Python ===
-venv/
-ENV/
-env/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-.python-version
-pip-log.txt
-pip-delete-this-directory.txt
-htmlcov/
-.tox/
+.cache
+*.cover
 .coverage
 .coverage.*
-.cache
-nosetests.xml
 coverage.xml
-*.cover
-*.log
-.pytest_cache/
-
+credentials/
 # Database configuration (sensitive data)
+*.dump *.dt *.dtl
+*.enc
+engines/config/db_config.sh
 engines/db_config.sh
+.env
+env/
+ENV/
+htmlcov/
+*.key
+*.log
+*.log logs/ backup/ backups/
+nosetests.xml
+*.pem
+*.pgpass
+pip-delete-this-directory.txt
+pip-log.txt
+*.pyc
+__pycache__/
+__pycache__/ *.pyc .vscode/ .idea/
+*.pyd
+*.pyo
+.pytest_cache/
+.Python
+# === Python ===
+.python-version
+secrets/
+*.tmp *.swp *~ .DS_Store
+.tox/
+venv/
+# Бинарные файлы 1С/БД
+# Временные и системные файлы
+# Логи и бэкапы
+# Чувствительные данные
