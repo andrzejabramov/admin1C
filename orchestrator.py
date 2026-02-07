@@ -13,7 +13,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 def get_available_commands():
-    """Динамически получить список доступных команд из interfaces/cli/"""
+    """Динамически получить список доступных команд из commands/"""
     cli_dir = SCRIPTS_DIR / "commands"
     commands = []
     if cli_dir.exists():
@@ -25,6 +25,10 @@ def get_available_commands():
 def main():
     available_commands = get_available_commands()
     
+    # Чтение примеров из файла
+    examples_file = SCRIPTS_DIR / "docs" / "help_examples.txt"
+    examples_text = examples_file.read_text() if examples_file.exists() else "Примеры:\n  ib_1c backup --format dump --ib ИМЯ_ИБ"
+
     parser = argparse.ArgumentParser(
         prog="ib_1c",
         description="Единая команда администрирования 1С",
@@ -32,14 +36,12 @@ def main():
         epilog=f"""
 Доступные команды: {', '.join(available_commands) if available_commands else 'нет'}
 
-Примеры:
-  ib_1c backup --format dump --ib artel_2025 oksana_2025
-  ib_1c rm --ib artel_2025 --timestamp 20260204_120000 --confirm
+{examples_text}
         """
     )
     
     parser.add_argument("command", choices=available_commands or ["backup", "rm"], 
-                       help="Операция над ИБ (динамически определяется из interfaces/cli/)")
+                       help="Операция над ИБ (динамически определяется из commands/)")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Аргументы операции")
     
     args = parser.parse_args()

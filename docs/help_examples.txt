@@ -1,0 +1,7 @@
+Примеры:
+  ib_1c backup --format dump --ib artel_2025
+  ib_1c backup --format dump --ib artel_2025 oksana_2025 --confirm
+  ib_1c rm --ib artel_2025 --older-than 20260101 --dry-run
+  ib_1c rm --ib artel_2025 --timestamp 20260204_120000 --confirm
+  ib_1c storage --ib artel_2025
+  ib_1c storage
