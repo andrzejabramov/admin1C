@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """
-rm.py — CLI-интерфейс для удаления бэкапов
-Вызывается через orchestrator.py, но может работать автономно
+rm.py — CLI-интерфейс для удаления бэкапов ИБ 1С
+Вызывается через ib_1c rm ... (единая точка входа)
 """
 
 import sys
 import argparse
 from services.rm_service import RmService
 from core.exceptions import OrchestratorError
+from utils.datetime_utils import parse_older_than_arg, parse_timestamp_arg
 
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Удалить бэкапы информационных баз 1С",
-        epilog="Пример: rm.py --ib artel_2025 --timestamp 20260204_120000 --confirm"
+        epilog="""Примеры:
+  ib_1c rm --ib artel_2025 --timestamp "07.02.2026 14:30:22" --confirm
+  ib_1c rm --ib artel_2025 --older-than "01.02.2026" --dry-run
+  ib_1c rm --ib artel_2025 --older-than "01.02" --confirm  # текущий год
+  ib_1c rm --ib artel_2025 --confirm  # удалить ВСЕ бэкапы
+"""
     )
     parser.add_argument("--ib", required=True, nargs='+', help="Имя ИБ (можно несколько)")
-    parser.add_argument("--timestamp", help="Метка времени бэкапа (ГГГГММДД_ЧЧММСС)")
-    parser.add_argument("--older-than", help="Удалить бэкапы старше даты (ГГГГММДД)")
+    parser.add_argument("--timestamp", help="Метка времени бэкапа (ГГГГММДД_ЧЧММСС или 'дд.мм.гггг чч:мм:сс')")
+    parser.add_argument("--older-than", help="Удалить бэкапы старше даты (ГГГГММДД или 'дд.мм.гггг' или 'дд.мм')")
     parser.add_argument("--dry-run", action="store_true", help="Симуляция без удаления")
     parser.add_argument("--confirm", action="store_true", help="Подтверждение для реального удаления")
     
@@ -26,26 +32,45 @@ def main(args=None):
         service = RmService()
         errors = []
         
+        # Предварительная валидация аргументов дат
+        timestamp_machine = None
+        older_than_machine = None
+        
+        if parsed.timestamp:
+            try:
+                timestamp_machine = parse_timestamp_arg(parsed.timestamp)
+            except ValueError as e:
+                print(f"❌ Ошибка формата --timestamp: {e}", file=sys.stderr)
+                return 1
+        
+        if parsed.older_than:
+            older_than_machine = parse_older_than_arg(parsed.older_than)
+            # Проверка минимальной длины (защита от случайного ввода)
+            if len(older_than_machine) < 8:
+                print(f"❌ Некорректная дата для --older-than: '{parsed.older_than}'", file=sys.stderr)
+                return 1
+        
         for ib_name in parsed.ib:
             print(f"\n[ИБ: {ib_name}]")
             
             if parsed.timestamp:
                 result = service.remove_backup(
                     ib_name=ib_name,
-                    timestamp=parsed.timestamp,
+                    timestamp=timestamp_machine,  # Машиночитаемый формат
                     dry_run=parsed.dry_run,
                     confirm=parsed.confirm
                 )
             elif parsed.older_than:
                 result = service.remove_backup(
                     ib_name=ib_name,
-                    older_than=parsed.older_than,
+                    older_than=older_than_machine,  # Машиночитаемый формат
                     dry_run=parsed.dry_run,
                     confirm=parsed.confirm
                 )
             else:
                 if not parsed.confirm and not parsed.dry_run:
                     print(f"❌ Требуется --confirm для удаления ВСЕХ бэкапов ИБ '{ib_name}'")
+                    print(f"   Используйте --dry-run для просмотра или --confirm для подтверждения.")
                     errors.append(ib_name)
                     continue
                 result = service.remove_all_backups(ib_name=ib_name, confirm=parsed.confirm)
@@ -54,7 +79,14 @@ def main(args=None):
                 if result["stdout"]:
                     print(result["stdout"].strip())
             else:
-                print(f"❌ Ошибка: {result.get('stderr', 'Неизвестная ошибка').strip()}", file=sys.stderr)
+                stderr = result.get('stderr', 'Неизвестная ошибка').strip()
+                # Улучшенное сообщение об ошибке
+                if "не найден" in stderr or "not found" in stderr:
+                    print(f"❌ Бэкап не найден: {stderr}", file=sys.stderr)
+                elif "Отказано в доступе" in stderr or "Permission denied" in stderr:
+                    print(f"❌ Ошибка прав доступа: {stderr}", file=sys.stderr)
+                else:
+                    print(f"❌ Ошибка: {stderr}", file=sys.stderr)
                 errors.append(ib_name)
         
         print(f"\n✅ Успешно: {len(parsed.ib) - len(errors)}/{len(parsed.ib)} ИБ")
