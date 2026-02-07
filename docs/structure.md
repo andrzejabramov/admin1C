@@ -30,9 +30,9 @@
 │ ├── utils.sh # Общие утилиты (логирование, проверки)
 │ ├── validate.sh # Валидация состояния хранилища
 │ └── config/ # Конфигурации для движков
-│ ├── db_config.sh # Параметры подключения к PostgreSQL
-│ ├── db_config.sh.example# Пример конфигурации БД
-│ └── storage.sh # BACKUP_DIR="/var/backups/1c"
+│     ├── db_config.sh # Параметры подключения к PostgreSQL
+│     ├── db_config.sh.example# Пример конфигурации БД
+│     └── storage.sh # BACKUP_DIR="/var/backups/1c"
 │
 ├── services/ # Уровень 1: чистая бизнес-логика (единый источник правды)
 │ ├── __init__.py
