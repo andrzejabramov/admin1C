@@ -70,8 +70,6 @@ class Config:
     SCRIPTS_DIR = SCRIPTS_DIR
     LOG_FILE = LOG_FILE
     BACKUP_USER = BACKUP_USER
-    BACKUP_TIMEOUT_MINUTES_PER_GB = 5  # минут на каждый ГБ данных
-    BACKUP_TIMEOUT_MINIMUM = 300  # минимум 5 минут даже для маленьких ИБ
     
     @classmethod
     def load(cls):

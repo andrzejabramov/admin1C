@@ -1,0 +1,44 @@
+# services/backup_service.py
+"""
+Чистая бизнес-логика бэкапов — без зависимости от интерфейса (CLI/Web/Telegram)
+"""
+
+from typing import List, Dict
+from core.engine import run_engine
+from core.config import Config
+
+
+def backup_ib(ib_name: str, format_type: str, dry_run: bool = False) -> Dict[str, any]:
+    """
+    Создать бэкап одной информационной базы
+    
+    Для реальных бэкапов используется потоковый вывод (прогресс через pv).
+    Для dry-run — захват вывода для парсинга.
+    """
+    config = Config.load()
+    cmd = ["--ib", ib_name, "--format", format_type]
+    
+    # Потоковый вывод только для реальных операций (не для dry-run)
+    capture = dry_run
+    
+    result = run_engine(
+        "backup.sh", cmd, user=config.BACKUP_USER, capture_output=capture)
+    
+    return {
+        "success": result["success"],
+        "ib_name": ib_name,
+        "format": format_type,
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "returncode": result["returncode"]
+    }
+
+
+def backup_multiple(ib_list: List[str], format_type: str, dry_run: bool = False) -> List[Dict[str, any]]:
+    """
+    Создать бэкапы для списка информационных баз (последовательно)
+    """
+    results = []
+    for ib_name in ib_list:
+        results.append(backup_ib(ib_name, format_type, dry_run))
+    return results

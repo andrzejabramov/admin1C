@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 storage.py — мониторинг хранилища бэкапов 1С
+Фильтрует артефакты: системные директории (lost+found), виртуальные ИБ (all), опечатки
 """
 
 import sys
@@ -12,6 +13,14 @@ from utils.datetime_utils import machine_to_human
 
 BACKUP_ROOT = Path("/var/backups/1c")
 
+# Чёрный список: системные и виртуальные директории
+IB_BLACKLIST = {
+    "all", "ALL", "All",           # Виртуальная ИБ из скриптов
+    "apral_2025",                  # Опечатка artel_2025
+    "lost+found", ".snapshot",     # Системные директории
+    ".", ".."                      # Специальные ссылки
+}
+
 def get_backups_for_ib(ib_name: str):
     """Получить список бэкапов ИБ с метаданными"""
     ib_dir = BACKUP_ROOT / ib_name
@@ -19,19 +28,44 @@ def get_backups_for_ib(ib_name: str):
         return []
     
     backups = []
-    for entry in sorted(ib_dir.glob("20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9]"), reverse=True):
-        if entry.is_dir():
-            total_size = sum(f.stat().st_size for f in entry.glob("*") if f.is_file())
-            backups.append({
-                "timestamp": entry.name,
-                "human_time": machine_to_human(entry.name),
-                "size_bytes": total_size,
-                "path": entry
-            })
+    try:
+        for entry in sorted(ib_dir.glob("20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9]"), reverse=True):
+            if entry.is_dir():
+                total_size = sum(f.stat().st_size for f in entry.glob("*") if f.is_file())
+                backups.append({
+                    "timestamp": entry.name,
+                    "human_time": machine_to_human(entry.name),
+                    "size_bytes": total_size,
+                    "path": entry
+                })
+    except PermissionError:
+        pass  # Игнорируем директории без прав
     return backups
 
+def is_valid_ib(ib_name: str) -> bool:
+    """Проверить, является ли имя ИБ реальной базой 1С"""
+    if ib_name in IB_BLACKLIST:
+        return False
+    if ib_name.startswith(".") and ib_name not in {".", ".."}:
+        return False
+    
+    ib_dir = BACKUP_ROOT / ib_name
+    if not ib_dir.is_dir():
+        return False
+    
+    try:
+        next(ib_dir.iterdir(), None)
+    except PermissionError:
+        return False
+    
+    valid_backups = list(ib_dir.glob("20[0-9][0-9][01][0-9][0-3][0-9]_[0-2][0-9][0-5][0-9][0-5][0-9]"))
+    if not valid_backups:
+        has_files = any(f for f in ib_dir.iterdir() if f.is_file())
+        return has_files
+    
+    return True
+
 def format_size(bytes_size: int) -> str:
-    """Форматирование размера в человекочитаемый вид"""
     if bytes_size == 0:
         return "0B"
     for unit in ["B", "K", "M", "G", "T"]:
@@ -41,7 +75,6 @@ def format_size(bytes_size: int) -> str:
     return f"{bytes_size:.1f}P"
 
 def format_age(timestamp: str) -> str:
-    """Форматирование возраста бэкапа (для наглядности)"""
     try:
         dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
         age = datetime.now() - dt
@@ -61,7 +94,6 @@ def format_age(timestamp: str) -> str:
         return ""
 
 def print_disk_usage():
-    """Вывод информации о дисковом пространстве"""
     try:
         total, used, free = shutil.disk_usage(BACKUP_ROOT)
         pct = used / total * 100
@@ -76,7 +108,6 @@ def print_disk_usage():
         print(f"⚠️  Ошибка получения информации о диске: {e}\n")
 
 def print_summary_table(ibs_to_show):
-    """Сводная таблица по всем ИБ"""
     print("📊 Статистика по ИБ:")
     print("┌──────────────────────────┬─────────────┬──────────────────────────┬────────────────────┬──────────────┐")
     print("│ ИБ                       │ Бэкапов     │ Последний                │ Последний размер   │ Всего        │")
@@ -96,7 +127,6 @@ def print_summary_table(ibs_to_show):
     print("└──────────────────────────┴─────────────┴──────────────────────────┴────────────────────┴──────────────┘\n")
 
 def print_detailed_backups(ib_name):
-    """Детальный вывод всех бэкапов одной ИБ"""
     backups = get_backups_for_ib(ib_name)
     if not backups:
         print(f"⚠️  ИБ '{ib_name}' не найдена или нет бэкапов\n")
@@ -125,24 +155,26 @@ def main(args=None):
     parser.add_argument("--ib", help="Показать детальный список бэкапов для указанной ИБ")
     parsed = parser.parse_args(args)
     
-    # Список ИБ
     try:
-        all_ibs = [d.name for d in BACKUP_ROOT.glob("*") if d.is_dir() and not d.name.startswith(".")]
+        all_entries = [d.name for d in BACKUP_ROOT.glob("*") if d.is_dir()]
+        all_ibs = [name for name in all_entries if is_valid_ib(name)]
     except Exception as e:
         print(f"❌ Ошибка чтения каталога бэкапов: {e}", file=sys.stderr)
         return 1
     
-    # Вывод дискового пространства (всегда)
     print_disk_usage()
     
-    # Режим детального вывода для одной ИБ
     if parsed.ib:
         if parsed.ib not in all_ibs:
             print(f"❌ ИБ '{parsed.ib}' не найдена в {BACKUP_ROOT}", file=sys.stderr)
+            print(f"   Доступные ИБ: {', '.join(sorted(all_ibs))}", file=sys.stderr)
             return 1
         return print_detailed_backups(parsed.ib)
     
-    # Режим сводной таблицы по всем ИБ
+    if not all_ibs:
+        print("⚠️  Нет валидных ИБ для отображения\n")
+        return 0
+    
     print_summary_table(all_ibs)
     return 0
 

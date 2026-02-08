@@ -26,6 +26,30 @@ class BackupError(OrchestratorError):
     pass
 
 
+class BackupTimeoutError(BackupError):
+    """
+    Ошибка таймаута при создании бэкапа.
+    
+    Возникает, когда бэкап не завершился за рассчитанное время.
+    Рекомендуется увеличить таймаут в конфигурации или проверить производительность сети/диска.
+    """
+    
+    def __init__(self, ib_name: str, timeout_seconds: int, estimated_size_gb: float = None):
+        self.ib_name = ib_name
+        self.timeout_seconds = timeout_seconds
+        self.estimated_size_gb = estimated_size_gb
+        
+        size_info = f" (оценочный размер: {estimated_size_gb:.1f} ГБ)" if estimated_size_gb else ""
+        timeout_min = timeout_seconds // 60
+        
+        message = (
+            f"❌ Прервано по таймауту: бэкап ИБ «{ib_name}» не завершился за {timeout_min} мин{size_info}\n"
+            f"   → Для больших ИБ увеличьте BACKUP_TIMEOUT_MINUTES_PER_GB в /opt/1cv8/scripts/core/config.py\n"
+            f"   → Или проверьте производительность сети/диска (медленное подключение к БД 10.129.0.27?)"
+        )
+        super().__init__(message)
+
+
 class RmError(OrchestratorError):
     """Ошибка при удалении бэкапов"""
     pass

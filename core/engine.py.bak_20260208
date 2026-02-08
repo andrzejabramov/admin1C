@@ -67,24 +67,13 @@ def run_engine(
             }
         else:
             # Режим потокового вывода (для прогресса: backup, rm больших файлов)
-            # При смене пользователя — оборачиваем в `script` для изолированного TTY
-            # (иначе `pv` получит [Errno 1] из-за отсутствия прав на терминал владельца)
-            if user:
-                cmd_str = ' '.join(cmd)
-                cmd_wrapper = ['script', '-q', '-c', cmd_str, '/dev/null']
-                process = subprocess.Popen(
-                    cmd_wrapper,
-                    cwd=SCRIPTS_DIR,
-                    stdout=sys.stdout,
-                    stderr=sys.stderr
-                )
-            else:
-                process = subprocess.Popen(
-                    cmd,
-                    cwd=SCRIPTS_DIR,
-                    stdout=sys.stdout,
-                    stderr=sys.stderr
-                )
+            # Проксируем напрямую в терминал — pv сможет отрисовать прогресс
+            process = subprocess.Popen(
+                cmd,
+                cwd=SCRIPTS_DIR,
+                stdout=sys.stdout,
+                stderr=sys.stderr
+            )
             try:
                 process.wait(timeout=timeout)
                 return {
@@ -95,12 +84,12 @@ def run_engine(
                 }
             except subprocess.TimeoutExpired:
                 process.kill()
-                # Пробрасываем кастомное исключение — оно будет обработано в backup_service.py
-                from core.exceptions import BackupTimeoutError
-                raise BackupTimeoutError(
-                    ib_name=script_name.replace('.sh', ''),  # Упрощённо — в реальности нужно передавать имя ИБ
-                    timeout_seconds=timeout
-                )
+                return {
+                    "success": False,
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": f"Timeout expired after {timeout}s"
+                }
     
     except Exception as e:
         return {

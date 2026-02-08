@@ -17,13 +17,13 @@ def main(args=None):
   ib_1c rm --ib artel_2025 --timestamp "07.02.2026 14:30:22" --confirm
   ib_1c rm --ib artel_2025 --older-than "01.02.2026" --dry-run
   ib_1c rm --ib artel_2025 --older-than "01.02" --confirm  # текущий год
-  ib_1c rm --ib artel_2025 --confirm  # удалить ВСЕ бэкапы
+  ib_1c rm --ib artel_2025 --dry-run  # симуляция удаления ВСЕХ бэкапов (без --confirm!)
 """
     )
-    parser.add_argument("--ib", required=True, nargs='+', help="Имя ИБ (можно несколько)")
+    parser.add_argument("--ib", required=True, nargs="+", help="Имя ИБ (можно несколько)")
     parser.add_argument("--timestamp", help="Метка времени бэкапа (ГГГГММДД_ЧЧММСС или 'дд.мм.гггг чч:мм:сс')")
     parser.add_argument("--older-than", help="Удалить бэкапы старше даты (ГГГГММДД или 'дд.мм.гггг' или 'дд.мм')")
-    parser.add_argument("--dry-run", action="store_true", help="Симуляция без удаления")
+    parser.add_argument("--dry-run", action="store_true", help="Симуляция без удаления (не требует --confirm)")
     parser.add_argument("--confirm", action="store_true", help="Подтверждение для реального удаления")
     
     parsed = parser.parse_args(args)
@@ -45,7 +45,6 @@ def main(args=None):
         
         if parsed.older_than:
             older_than_machine = parse_older_than_arg(parsed.older_than)
-            # Проверка минимальной длины (защита от случайного ввода)
             if len(older_than_machine) < 8:
                 print(f"❌ Некорректная дата для --older-than: '{parsed.older_than}'", file=sys.stderr)
                 return 1
@@ -53,34 +52,39 @@ def main(args=None):
         for ib_name in parsed.ib:
             print(f"\n[ИБ: {ib_name}]")
             
+            # Логика выбора операции с корректной обработкой --dry-run
             if parsed.timestamp:
                 result = service.remove_backup(
                     ib_name=ib_name,
-                    timestamp=timestamp_machine,  # Машиночитаемый формат
+                    timestamp=timestamp_machine,
                     dry_run=parsed.dry_run,
-                    confirm=parsed.confirm
+                    confirm=parsed.confirm if not parsed.dry_run else True  # Для симуляции подтверждение не нужно
                 )
             elif parsed.older_than:
                 result = service.remove_backup(
                     ib_name=ib_name,
-                    older_than=older_than_machine,  # Машиночитаемый формат
+                    older_than=older_than_machine,
                     dry_run=parsed.dry_run,
-                    confirm=parsed.confirm
+                    confirm=parsed.confirm if not parsed.dry_run else True
                 )
             else:
-                if not parsed.confirm and not parsed.dry_run:
+                # Удаление ВСЕХ бэкапов
+                if not parsed.dry_run and not parsed.confirm:
                     print(f"❌ Требуется --confirm для удаления ВСЕХ бэкапов ИБ '{ib_name}'")
-                    print(f"   Используйте --dry-run для просмотра или --confirm для подтверждения.")
+                    print(f"   Используйте --dry-run для просмотра затронутых файлов.")
                     errors.append(ib_name)
                     continue
-                result = service.remove_all_backups(ib_name=ib_name, confirm=parsed.confirm)
+                
+                result = service.remove_all_backups(
+                    ib_name=ib_name,
+                    confirm=(not parsed.dry_run)  # Для --dry-run всегда разрешаем
+                )
             
             if result["success"]:
                 if result["stdout"]:
                     print(result["stdout"].strip())
             else:
-                stderr = result.get('stderr', 'Неизвестная ошибка').strip()
-                # Улучшенное сообщение об ошибке
+                stderr = result.get("stderr", "Неизвестная ошибка").strip()
                 if "не найден" in stderr or "not found" in stderr:
                     print(f"❌ Бэкап не найден: {stderr}", file=sys.stderr)
                 elif "Отказано в доступе" in stderr or "Permission denied" in stderr:
