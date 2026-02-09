@@ -35,15 +35,8 @@ class RmService:
         """
         Удалить бэкап(ы) ИБ через скрипт rm.sh
         
-        Args:
-            ib_name: Имя информационной базы
-            timestamp: Конкретная метка времени (опционально)
-            older_than: Удалить бэкапы старше даты (опционально)
-            dry_run: Режим симуляции (не удаляет файлы)
-            confirm: Подтверждение для реального удаления
-        
-        Returns:
-            dict: {"success": bool, "stdout": str, "stderr": str}
+        Для --dry-run передаём --confirm в скрипт — он сам решит, нужно ли подтверждение
+        (внутри скрипта: при DRY_RUN=true подтверждение пропускается)
         """
         try:
             self._validate_ib(ib_name)
@@ -56,10 +49,11 @@ class RmService:
                 args.extend(["--older-than", older_than])
             if dry_run:
                 args.append("--dry-run")
-            if confirm or dry_run:  # Для --dry-run подтверждение не требуется (передаём --confirm в скрипт для разблокировки)
+            if confirm or dry_run:  # ← КЛЮЧ: для --dry-run передаём --confirm чтобы разблокировать скрипт
                 args.append("--confirm")
             
             # Вызов скрипта напрямую через subprocess
+            print(f"DEBUG ARGS: {args}", file=sys.stderr)
             result = subprocess.run(
                 args,
                 capture_output=True,
@@ -100,19 +94,5 @@ class RmService:
                           dry_run: bool = False) -> dict:
         """
         Удалить ВСЕ бэкапы ИБ
-        
-        Для --dry-run подтверждение НЕ требуется — показываем, что будет удалено.
         """
-        # Для симуляции подтверждение не нужно (передаём --confirm в скрипт)
-        if dry_run:
-            return self.remove_backup(ib_name=ib_name, dry_run=True, confirm=True)
-        
-        # Без --dry-run и без --confirm — блокируем опасную операцию
-        if not confirm:
-            return {
-                "success": False,
-                "stdout": "",
-                "stderr": f"Требуется --confirm для удаления ВСЕХ бэкапов ИБ '{ib_name}'"
-            }
-        
-        return self.remove_backup(ib_name=ib_name, dry_run=False, confirm=True)
+        return self.remove_backup(ib_name=ib_name, dry_run=dry_run, confirm=confirm)

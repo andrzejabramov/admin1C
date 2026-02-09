@@ -77,12 +77,14 @@ def main(args=None):
                 
                 result = service.remove_all_backups(
                     ib_name=ib_name,
-                    confirm=(not parsed.dry_run)  # Для --dry-run всегда разрешаем
+                    confirm=(parsed.confirm or parsed.dry_run),  # Для --dry-run всегда разрешаем
+                    dry_run=parsed.dry_run
                 )
             
             if result["success"]:
-                if result["stdout"]:
-                    print(result["stdout"].strip())
+                output = result["stdout"].strip() or result["stderr"].strip()
+                if output:
+                    print(output)
             else:
                 stderr = result.get("stderr", "Неизвестная ошибка").strip()
                 if "не найден" in stderr or "not found" in stderr:
