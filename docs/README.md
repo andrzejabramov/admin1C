@@ -58,8 +58,18 @@ ib_1c storage update-ib-list --confirm
 ```
 /opt/1cv8/scripts/
 ├── orchestrator.py # Единая точка входа (ib_1c)
-├── config/
-│ └── global.sh # Общие настройки: PG_HOST, PG_PORT, BACKUP_ROOT, SSH_KEY
+├── .gitignore
+├── .version
+├── ib_list.conf
+├── requirements.txt
+├── img/
+├── docs/
+├ ├── prompts.md
+├ ├── README.md
+├── engines/
+│ ├── utils.sh
+│ ├── config/
+│    └── global.sh # Общие настройки: PG_HOST, PG_PORT, BACKUP_ROOT, SSH_KEY
 ├── core/ # Общие утилиты (без бизнес-логики)
 │ ├── engine.py # run_engine() — универсальный запуск скриптов
 │ ├── utils.py # Цвета терминала, логирование
@@ -94,9 +104,10 @@ ib_1c storage update-ib-list --confirm
 │ │ ├── count_backups.sh # Подсчёт количества/размера бэкапов
 │ │ ├── validate.sh # Валидация состояния хранилища
 │ │ └── list_ibs.sh # Получение списка ИБ из кластера 1С (rac)
+│ │ └── ssl.sh
 ├ ├── services/
-│   ├── __init__.py
-│   └── storage_service.py # get_usage(), get_ib_stats(), update_ib_list()
+│ │ ├── __init__.py
+│ │ └── storage_service.py # get_usage(), get_ib_stats(), update_ib_list()
 ├ └── adapters/cli/
 ├   ├── __init__.py
 ├   └── storage_adapter.py # CLI-адаптер (storage, list-ibs, update-ib-list)
