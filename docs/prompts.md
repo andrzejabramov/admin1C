@@ -45,20 +45,20 @@ scripts/
 │ ├── engines/
 │ │ └── backup.sh # pg_dump через SSH
 │ ├── services/
-│ │ ├── init.py # Пустой маркер модуля
+│ │ ├── __init__.py # Пустой маркер модуля
 │ │ └── backup_service.py # backup_ib(ib_name, format_type, dry_run=False)
 │ └── adapters/cli/
-│ ├── init.py # Пустой маркер модуля
+│ ├── __init__.py # Пустой маркер модуля
 │ └── backup_adapter.py # argparse → backup_service → вывод + --help
 │
 ├── rm/ # 🗑️ Домен: удаление
 │ ├── engines/
 │ │ └── rm.sh # Удаление файлов бэкапов
 │ ├── services/
-│ │ ├── init.py
+│ │ ├── __init__.py
 │ │ └── rm_service.py # rm_ib(ib_name, timestamp=None, older_than=None, confirm=False)
 │ └── adapters/cli/
-│ ├── init.py
+│ ├── __init__.py
 │ └── rm_adapter.py # argparse → rm_service → вывод + --help
 │
 └── storage/ # 💾 Домен: мониторинг + управление списком ИБ
@@ -69,10 +69,10 @@ scripts/
 │ ├── validate.sh # Проверка целостности хранилища
 │ └── list_ibs.sh # rac cluster list infobases (получение списка ИБ из кластера)
 ├── services/
-│ ├── init.py
+│ ├── __init__.py
 │ └── storage_service.py # get_usage(), get_ib_stats(), get_ib_list_from_cluster(), update_ib_list(confirm=False)
 └── adapters/cli/
-├── init.py
+├── __init__.py
 └── storage_adapter.py # storage, list-ibs, update-ib-list + --help
 ```
 
