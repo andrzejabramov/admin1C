@@ -41,4 +41,4 @@ coverage.xml
 .pytest_cache/
 
 # Database configuration (sensitive data)
-engines/config/db_config.sh
+engines/config/global.sh
