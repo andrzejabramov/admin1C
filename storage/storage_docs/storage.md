@@ -1,3 +1,5 @@
+[НАЗАД](https://github.com/andrzejabramov/admin1C/blob/refactor/domain-isolation/docs/README.md)
+
 ## 🌳 Структура файлов
 
 ```
@@ -213,3 +215,5 @@ user@domain:<path>$ ib_1c storage --ib test_db
 ```
 
 ℹ️ Всего: 4 бэкап(ов), общий размер: 3.4G
+
+[НАЗАД](https://github.com/andrzejabramov/admin1C/blob/refactor/domain-isolation/docs/README.md)
