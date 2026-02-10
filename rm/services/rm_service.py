@@ -1,19 +1,17 @@
 """
 rm_service.py — бизнес-логика удаления бэкапов
-Прямой вызов скрипта /opt/1cv8/scripts/engines/rm.sh через subprocess
+Вызывает движок через универсальный адаптер core.engine.run_engine()
 """
 
-import subprocess
-import sys
 from pathlib import Path
-from core.exceptions import RmError, PermissionError, NotFoundError
+from core.engine import run_engine
+from core.exceptions import NotFoundError, RmError
 
 class RmService:
     """Сервис удаления бэкапов ИБ"""
     
     def __init__(self):
         self.backup_root = Path("/var/backups/1c")
-        self.rm_script = Path("/opt/1cv8/scripts/engines/rm.sh")
     
     def _validate_ib(self, ib_name: str) -> None:
         """Проверить существование ИБ в хранилище"""
@@ -33,66 +31,53 @@ class RmService:
                      older_than: str = None, dry_run: bool = False, 
                      confirm: bool = False) -> dict:
         """
-        Удалить бэкап(ы) ИБ через скрипт rm.sh
+        Удалить бэкап(ы) ИБ через движок rm.sh
         
-        Для --dry-run передаём --confirm в скрипт — он сам решит, нужно ли подтверждение
-        (внутри скрипта: при DRY_RUN=true подтверждение пропускается)
+        Бизнес-правило безопасности:
+        - Для удаления ВСЕХ бэкапов без фильтра (--timestamp/--older-than)
+          требуется подтверждение (--confirm) ИЛИ режим симуляции (--dry-run)
+        - Для удаления конкретного бэкапа (--timestamp/--older-than)
+          подтверждение не требуется в режиме симуляции
         """
-        try:
-            self._validate_ib(ib_name)
-            
-            # Формируем аргументы для скрипта
-            args = ["sudo", "-u", "usr1cv8", str(self.rm_script), "--ib", ib_name]
-            if timestamp:
-                args.extend(["--timestamp", timestamp])
-            if older_than:
-                args.extend(["--older-than", older_than])
-            if dry_run:
-                args.append("--dry-run")
-            if confirm or dry_run:  # ← КЛЮЧ: для --dry-run передаём --confirm чтобы разблокировать скрипт
-                args.append("--confirm")
-            
-            # Вызов скрипта напрямую через subprocess
-            print(f"DEBUG ARGS: {args}", file=sys.stderr)
-            result = subprocess.run(
-                args,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 минут на операцию
-            )
-            
-            # Обработка результата
-            if result.returncode != 0:
-                stderr = result.stderr.strip() or result.stdout.strip()
-                if "не найден" in stderr or "not found" in stderr:
-                    raise NotFoundError("Бэкап не найден", stderr)
-                elif "Отказано в доступе" in stderr or "Permission denied" in stderr:
-                    raise PermissionError("Ошибка прав доступа при удалении бэкапа", stderr)
-                else:
-                    raise RmError("Ошибка при выполнении операции удаления", stderr)
-            
-            return {
-                "success": True,
-                "stdout": result.stdout,
-                "stderr": result.stderr
-            }
-            
-        except subprocess.TimeoutExpired:
+        self._validate_ib(ib_name)
+        
+        # 🔑 ЕДИНСТВЕННАЯ ТОЧКА ПРОВЕРКИ ПОДТВЕРЖДЕНИЯ (бизнес-логика)
+        if not dry_run and not confirm and not timestamp and not older_than:
             return {
                 "success": False,
                 "stdout": "",
-                "stderr": "Таймаут операции удаления (300 сек)"
+                "stderr": f"Требуется --confirm для удаления ВСЕХ бэкапов ИБ '{ib_name}'"
             }
-        except Exception as e:
-            return {
-                "success": False,
-                "stdout": "",
-                "stderr": str(e)
-            }
+        
+        # Формирование аргументов для движка
+        args = ["--ib", ib_name]
+        if timestamp:
+            args.extend(["--timestamp", timestamp])
+        if older_than:
+            args.extend(["--older-than", older_than])
+        if dry_run:
+            args.append("--dry-run")
+        if confirm or dry_run:  # Для симуляции разрешаем без явного --confirm
+            args.append("--confirm")
+        
+        # Вызов движка через универсальный адаптер с доменным путём
+        return run_engine(
+            script_path="rm/engines/rm.sh",  # ← Относительный путь от корня проекта
+            args=args,
+            timeout=300,  # 5 минут на операцию
+            user="usr1cv8",
+            capture_output=True
+        )
     
     def remove_all_backups(self, ib_name: str, confirm: bool = False, 
                           dry_run: bool = False) -> dict:
         """
         Удалить ВСЕ бэкапы ИБ
+        
+        Делегирует проверку подтверждения в remove_backup()
         """
-        return self.remove_backup(ib_name=ib_name, dry_run=dry_run, confirm=confirm)
+        return self.remove_backup(
+            ib_name=ib_name,
+            dry_run=dry_run,
+            confirm=confirm
+        )

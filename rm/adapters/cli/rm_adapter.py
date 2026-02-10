@@ -6,18 +6,18 @@ rm.py — CLI-интерфейс для удаления бэкапов ИБ 1С
 
 import sys
 import argparse
-from services.rm_service import RmService
+from rm.services.rm_service import RmService
 from core.exceptions import OrchestratorError
-from utils.datetime_utils import parse_older_than_arg, parse_timestamp_arg
+from core.utils import parse_older_than_arg, parse_timestamp_arg
 
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Удалить бэкапы информационных баз 1С",
         epilog="""Примеры:
-  ib_1c rm --ib artel_2025 --timestamp "07.02.2026 14:30:22" --confirm
-  ib_1c rm --ib artel_2025 --older-than "01.02.2026" --dry-run
-  ib_1c rm --ib artel_2025 --older-than "01.02" --confirm  # текущий год
-  ib_1c rm --ib artel_2025 --dry-run  # симуляция удаления ВСЕХ бэкапов (без --confirm!)
+  ib_1c rm --ib test_db --timestamp "07.02.2026 14:30:22" --confirm
+  ib_1c rm --ib test_db --older-than "01.02.2026" --dry-run
+  ib_1c rm --ib test_db --older-than "01.02" --confirm  # текущий год
+  ib_1c rm --ib test_db --dry-run  # симуляция удаления ВСЕХ бэкапов (без --confirm!)
 """
     )
     parser.add_argument("--ib", required=True, nargs="+", help="Имя ИБ (можно несколько)")

@@ -1,7 +1,7 @@
 # core/engine.py
 """
-Универсальный запуск bash-скриптов из engines/
-Поддерживает как захват вывода (для парсинга), так и потоковый вывод (для прогресса).
+Универсальный запуск bash-скриптов из проекта
+Поддерживает как глобальные скрипты (/engines/), так и доменные (/домен/engines/)
 """
 
 from pathlib import Path
@@ -9,21 +9,21 @@ import subprocess
 import sys
 from typing import List, Dict, Optional
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "engines"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def run_engine(
-    script_name: str,
+    script_path: str,
     args: List[str],
     timeout: int = 300,
     user: Optional[str] = None,
     capture_output: bool = True
 ) -> Dict[str, any]:
     """
-    Выполнить bash-скрипт из engines/
+    Выполнить bash-скрипт из проекта
     
     Args:
-        script_name: имя скрипта (например, 'backup.sh')
+        script_path: Относительный путь от корня проекта (например, "rm/engines/rm.sh")
         args: аргументы для скрипта
         timeout: таймаут выполнения в секундах
         user: пользователь для выполнения (если требуется)
@@ -33,28 +33,28 @@ def run_engine(
     Returns:
         dict с ключами: returncode, stdout, stderr, success
     """
-    script_path = SCRIPTS_DIR / script_name
+    full_script_path = PROJECT_ROOT / script_path
     
-    if not script_path.exists():
+    if not full_script_path.exists():
         return {
             "success": False,
             "returncode": -1,
             "stdout": "",
-            "stderr": f"Скрипт не найден: {script_path}"
+            "stderr": f"Скрипт не найден: {full_script_path}"
         }
     
     # Формирование команды
     cmd = []
     if user:
         cmd.extend(["sudo", "-u", user])
-    cmd.extend([str(script_path)] + args)
+    cmd.extend([str(full_script_path)] + args)
     
     try:
         if capture_output:
             # Режим захвата вывода (для парсинга: disk_usage, list_backups)
             result = subprocess.run(
                 cmd,
-                cwd=SCRIPTS_DIR,
+                cwd=PROJECT_ROOT,
                 capture_output=True,
                 text=True,
                 timeout=timeout
@@ -67,21 +67,19 @@ def run_engine(
             }
         else:
             # Режим потокового вывода (для прогресса: backup, rm больших файлов)
-            # При смене пользователя — оборачиваем в `script` для изолированного TTY
-            # (иначе `pv` получит [Errno 1] из-за отсутствия прав на терминал владельца)
             if user:
                 cmd_str = ' '.join(cmd)
                 cmd_wrapper = ['script', '-q', '-c', cmd_str, '/dev/null']
                 process = subprocess.Popen(
                     cmd_wrapper,
-                    cwd=SCRIPTS_DIR,
+                    cwd=PROJECT_ROOT,
                     stdout=sys.stdout,
                     stderr=sys.stderr
                 )
             else:
                 process = subprocess.Popen(
                     cmd,
-                    cwd=SCRIPTS_DIR,
+                    cwd=PROJECT_ROOT,
                     stdout=sys.stdout,
                     stderr=sys.stderr
                 )
@@ -95,10 +93,9 @@ def run_engine(
                 }
             except subprocess.TimeoutExpired:
                 process.kill()
-                # Пробрасываем кастомное исключение — оно будет обработано в backup_service.py
                 from core.exceptions import BackupTimeoutError
                 raise BackupTimeoutError(
-                    ib_name=script_name.replace('.sh', ''),  # Упрощённо — в реальности нужно передавать имя ИБ
+                    ib_name=script_path.replace('.sh', ''),
                     timeout_seconds=timeout
                 )
     
