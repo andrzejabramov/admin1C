@@ -1,0 +1,18 @@
+#!/bin/bash
+# engines/db_config.sh — конфигурация подключения к СУБД
+# Скопируйте в db_config.sh и укажите реальные параметры
+# ⚠️ Этот файл НЕ должен попадать в Git (добавлен в .gitignore)
+
+# Параметры подключения к PostgreSQL
+export PG_HOST="xx.xxx.x.xx"      # IP-адрес сервера БД
+export PG_PORT="xxxx"             # Порт PostgreSQL
+export PG_USER="xxxxxxxx"         # Пользователь БД
+export PGPASS_FILE="/xxxx/xxxxxxxxx/.xxxxx"  # Путь к файлу паролей
+export BACKUP_ROOT="/var/backups/1c"        # Корень для хранения бэкапов
+
+# SSH-доступ к серверу БД
+export SSH_KEY="/opt/1cv8/.ssh/xxxxxxxx
+export SSH_USER="xxxxxxx"
+
+# Путь к .pgpass НА СЕРВЕРЕ БД
+export REMOTE_PGPASS="/xxxxx/xxxxxx/.xxxxxxx"

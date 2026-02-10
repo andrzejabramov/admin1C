@@ -13,14 +13,23 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 def get_available_commands():
-    """Динамически получить список доступных команд из commands/"""
-    cli_dir = SCRIPTS_DIR / "commands"
-    commands = []
-    if cli_dir.exists():
-        for f in cli_dir.glob("*.py"):
-            if f.name != "__init__.py" and not f.name.startswith("_"):
-                commands.append(f.stem)
-    return sorted(commands)
+    """Поиск адаптеров в доменах: <домен>/adapters/cli/<команда>_adapter.py"""
+    commands = {}
+    for domain_dir in SCRIPTS_DIR.glob("*"):
+        if not domain_dir.is_dir():
+            continue
+        # Исключаем системные папки
+        if domain_dir.name in {"core", "docs", "engines", "commands", "__pycache__", ".git"}:
+            continue
+        adapter_dir = domain_dir / "adapters" / "cli"
+        if not adapter_dir.exists():
+            continue
+        for adapter_file in adapter_dir.glob("*_adapter.py"):
+            if adapter_file.name.startswith("_"):
+                continue
+            cmd_name = adapter_file.stem.replace("_adapter", "")
+            commands[cmd_name] = f"{domain_dir.name}.adapters.cli.{adapter_file.stem}"
+    return dict(sorted(commands.items()))
 
 def main():
     available_commands = get_available_commands()
@@ -34,21 +43,21 @@ def main():
         description="Единая команда администрирования 1С",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
-Доступные команды: {', '.join(available_commands) if available_commands else 'нет'}
+Доступные команды: {', '.join(available_commands.keys()) if available_commands else 'нет'}
 
 {examples_text}
         """
     )
     
-    parser.add_argument("command", choices=available_commands or ["backup", "rm"], 
-                       help="Операция над ИБ (динамически определяется из commands/)")
+    parser.add_argument("command", choices=list(available_commands.keys()) or ["backup", "rm"], 
+                       help="Операция над ИБ (динамически определяется из доменов)")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Аргументы операции")
     
     args = parser.parse_args()
     
-    # Динамическая маршрутизация через импорт
+    # Динамическая маршрутизация через доменные адаптеры
     try:
-        module_path = f"commands.{args.command}"
+        module_path = available_commands[args.command]
         module = importlib.import_module(module_path)
         
         if not hasattr(module, "main"):
@@ -58,10 +67,8 @@ def main():
         return module.main(args.args)
         
     except ModuleNotFoundError as e:
-        cli_dir = SCRIPTS_DIR / "commands"
         print(f"❌ Команда '{args.command}' не найдена", file=sys.stderr)
-        print(f"   Доступные команды: {', '.join(available_commands)}", file=sys.stderr)
-        print(f"   Для добавления новой команды создайте: {cli_dir}/{args.command}.py", file=sys.stderr)
+        print(f"   Доступные команды: {', '.join(available_commands.keys())}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("\n⚠️  Операция прервана пользователем", file=sys.stderr)

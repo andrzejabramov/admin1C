@@ -1,3 +1,4 @@
+# scripts/storage/adapters/cli/storage_adapter.py
 #!/usr/bin/env python3
 """
 storage.py — мониторинг хранилища бэкапов 1С
@@ -9,7 +10,7 @@ import argparse
 import shutil
 from datetime import datetime
 from pathlib import Path
-from utils.datetime_utils import machine_to_human
+from core.utils import machine_to_human
 
 BACKUP_ROOT = Path("/var/backups/1c")
 
