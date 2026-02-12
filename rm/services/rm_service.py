@@ -28,21 +28,19 @@ class RmService:
             )
     
     def remove_backup(self, ib_name: str, timestamp: str = None, 
-                     older_than: str = None, dry_run: bool = False, 
-                     confirm: bool = False) -> dict:
+                     after: str = None, before: str = None,
+                     dry_run: bool = False, confirm: bool = False) -> dict:
         """
         Удалить бэкап(ы) ИБ через движок rm.sh
         
         Бизнес-правило безопасности:
-        - Для удаления ВСЕХ бэкапов без фильтра (--timestamp/--older-than)
-          требуется подтверждение (--confirm) ИЛИ режим симуляции (--dry-run)
-        - Для удаления конкретного бэкапа (--timestamp/--older-than)
-          подтверждение не требуется в режиме симуляции
+        - Для удаления ВСЕХ бэкапов без фильтра требуется подтверждение (--confirm)
+          ИЛИ режим симуляции (--dry-run)
         """
         self._validate_ib(ib_name)
         
         # 🔑 ЕДИНСТВЕННАЯ ТОЧКА ПРОВЕРКИ ПОДТВЕРЖДЕНИЯ (бизнес-логика)
-        if not dry_run and not confirm and not timestamp and not older_than:
+        if not dry_run and not confirm and not timestamp and not after and not before:
             return {
                 "success": False,
                 "stdout": "",
@@ -53,8 +51,10 @@ class RmService:
         args = ["--ib", ib_name]
         if timestamp:
             args.extend(["--timestamp", timestamp])
-        if older_than:
-            args.extend(["--older-than", older_than])
+        if after:
+            args.extend(["--after", after])
+        if before:
+            args.extend(["--before", before])
         if dry_run:
             args.append("--dry-run")
         if confirm or dry_run:  # Для симуляции разрешаем без явного --confirm
@@ -62,7 +62,7 @@ class RmService:
         
         # Вызов движка через универсальный адаптер с доменным путём
         return run_engine(
-            script_path="rm/engines/rm.sh",  # ← Относительный путь от корня проекта
+            script_path="rm/engines/rm.sh",
             args=args,
             timeout=300,  # 5 минут на операцию
             user="usr1cv8",
@@ -72,7 +72,7 @@ class RmService:
     def remove_all_backups(self, ib_name: str, confirm: bool = False, 
                           dry_run: bool = False) -> dict:
         """
-        Удалить ВСЕ бэкапы ИБ
+        Удалить ВСЕ бэкапы указанной ИБ
         
         Делегирует проверку подтверждения в remove_backup()
         """
@@ -80,4 +80,31 @@ class RmService:
             ib_name=ib_name,
             dry_run=dry_run,
             confirm=confirm
+        )
+    
+    def remove_all_ibs(self, dry_run: bool = False, confirm: bool = False) -> dict:
+        """
+        Удалить ВСЕ бэкапы ВСЕХ ИБ (глобальная операция)
+        
+        Требует явного подтверждения (--confirm) или симуляции (--dry)
+        """
+        if not dry_run and not confirm:
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "Требуется --confirm для удаления ВСЕХ бэкапов всех ИБ (глобальная операция!)"
+            }
+        
+        args = ["--all"]
+        if dry_run:
+            args.append("--dry-run")
+        if confirm or dry_run:
+            args.append("--confirm")
+        
+        return run_engine(
+            script_path="rm/engines/rm.sh",
+            args=args,
+            timeout=600,  # 10 минут на глобальную операцию
+            user="usr1cv8",
+            capture_output=True
         )
