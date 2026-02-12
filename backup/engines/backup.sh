@@ -1,13 +1,12 @@
 #!/bin/bash
-# /opt/1cv8/scripts/engines/backup.sh
-# Создание бэкапа ИБ через pg_dump (удалённое подключение к 10.129.0.27)
+# backup/engines/backup.sh
+# Создание бэкапа ИБ через pg_dump (удалённое подключение к кластеру БД)
 set -euo pipefail
 
-# === Определение директории скрипта ===
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_PATH="$SCRIPT_DIR/config/db_config.sh"
-[[ -f "$CONFIG_PATH" ]] || { echo "❌ Конфиг не найден: $CONFIG_PATH" >&2; exit 1; }
-source "$CONFIG_PATH"
+# === Загрузка глобальной конфигурации ===
+GLOBAL_CONFIG="/opt/1cv8/scripts/engines/config/global.sh"
+[[ -f "$GLOBAL_CONFIG" ]] || { echo "❌ Глобальный конфиг не найден: $GLOBAL_CONFIG" >&2; exit 1; }
+source "$GLOBAL_CONFIG"
 
 # === Явные пути к утилитам PostgreSQL 15 ===
 PG_DUMP="/usr/lib/postgresql/15/bin/pg_dump"
@@ -42,23 +41,39 @@ log "📁 Директория: $BACKUP_DIR"
 if [[ "$FORMAT" == "dump" ]]; then
   log "💾 Бэкап ИБ: $IB_NAME (формат: dump)"
   
-  # Получаем размер БД для прогресс-бара (явная передача PGPASSFILE)
+  # Получаем размер БД для прогресс-бара
   DB_SIZE=$(PGPASSFILE="$PGPASS_FILE" $PSQL -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$IB_NAME" -tAc "SELECT pg_database_size('$IB_NAME');" 2>/dev/null || echo "")
   DB_SIZE="${DB_SIZE//[[:space:]]/}"
   [[ "$DB_SIZE" =~ ^[0-9]+$ ]] || DB_SIZE=""
   
-  # Выполняем pg_dump с прогрессом (явная передача PGPASSFILE)
+  # Выполняем pg_dump с прогрессом
   if [[ -n "$DB_SIZE" && "$DB_SIZE" -gt 0 ]]; then
     PGPASSFILE="$PGPASS_FILE" $PG_DUMP -Fc -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" 2>/dev/null | \
       pv -f -s "$DB_SIZE" | \
-      cat > "$BACKUP_DIR/backup.dump"
+      tee "$BACKUP_DIR/backup.dump" > /dev/null || {
+        log "❌ Ошибка записи: не удалось создать файл бэкапа"
+        rm -f "$BACKUP_DIR/backup.dump" 2>/dev/null
+        exit 1
+      }
   else
     PGPASSFILE="$PGPASS_FILE" $PG_DUMP -Fc -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" 2>/dev/null | \
       pv -f | \
-      cat > "$BACKUP_DIR/backup.dump"
+      tee "$BACKUP_DIR/backup.dump" > /dev/null || {
+        log "❌ Ошибка записи: не удалось создать файл бэкапа"
+        rm -f "$BACKUP_DIR/backup.dump" 2>/dev/null
+        exit 1
+      }
   fi
   
   echo ""
+  
+  # === КРИТИЧЕСКАЯ ПРОВЕРКА: файл создан и не пустой ===
+  if [[ ! -f "$BACKUP_DIR/backup.dump" ]] || [[ ! -s "$BACKUP_DIR/backup.dump" ]]; then
+    log "❌ Фатальная ошибка: файл бэкапа отсутствует или пустой (диск заполнен?)"
+    rm -f "$BACKUP_DIR/backup.dump" 2>/dev/null
+    exit 1
+  fi
+  
   SIZE=$(du -h "$BACKUP_DIR/backup.dump" 2>/dev/null | cut -f1 || echo "N/A")
   log "✅ Завершён: $BACKUP_DIR/backup.dump ($SIZE)"
   exit 0
@@ -70,7 +85,18 @@ if [[ "$FORMAT" == "sql" ]]; then
   
   PGPASSFILE="$PGPASS_FILE" $PG_DUMP -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" --no-owner --no-privileges 2>/dev/null | \
     gzip -c | \
-    cat > "$BACKUP_DIR/backup.sql.gz"
+    tee "$BACKUP_DIR/backup.sql.gz" > /dev/null || {
+      log "❌ Ошибка записи: не удалось создать файл бэкапа"
+      rm -f "$BACKUP_DIR/backup.sql.gz" 2>/dev/null
+      exit 1
+    }
+  
+  # Проверка целостности
+  if [[ ! -f "$BACKUP_DIR/backup.sql.gz" ]] || [[ ! -s "$BACKUP_DIR/backup.sql.gz" ]]; then
+    log "❌ Фатальная ошибка: файл бэкапа отсутствует или пустой"
+    rm -f "$BACKUP_DIR/backup.sql.gz" 2>/dev/null
+    exit 1
+  fi
   
   SIZE=$(du -h "$BACKUP_DIR/backup.sql.gz" 2>/dev/null | cut -f1 || echo "N/A")
   log "✅ Завершён: $BACKUP_DIR/backup.sql.gz ($SIZE)"
