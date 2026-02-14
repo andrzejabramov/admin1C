@@ -1,7 +1,7 @@
 # backup/services/backup_service.py
 """
 Чистая бизнес-логика бэкапов — без зависимости от интерфейса (CLI/Web/Telegram)
-Реализует адаптивный таймаут и проверку дискового пространства.
+Реализует адаптивный таймаут, проверку дискового пространства и точную диагностику ошибок.
 """
 
 from typing import List, Dict, Optional
@@ -17,7 +17,7 @@ import shutil
 def get_ib_size(ib_name: str) -> Optional[int]:
     """
     Получить размер ИБ в байтах через запрос к PostgreSQL.
-    Возвращает None при ошибке подключения.
+    Возвращает None при ошибке подключения или если ИБ не существует.
     """
     config = Config.load()
     
@@ -48,6 +48,10 @@ def get_ib_size(ib_name: str) -> Optional[int]:
             size_str = result.stdout.strip().replace(' ', '').replace(',', '')
             return int(size_str) if size_str.isdigit() else None
         else:
+            # Анализируем ошибку: если ИБ не существует — возвращаем специальный маркер
+            stderr_lower = result.stderr.lower()
+            if "does not exist" in stderr_lower or "не существует" in stderr_lower or "database" in stderr_lower and "not found" in stderr_lower:
+                return -1  # Специальный код: ИБ не найдена
             return None
     except Exception:
         return None
@@ -62,6 +66,9 @@ def estimate_backup_size(ib_name: str, format_type: str = "dump") -> float:
       - sql.gz: ~25% от pg_database_size() (текст + gzip)
     """
     size_bytes = get_ib_size(ib_name) or 0
+    # Если size_bytes == -1 (ИБ не найдена) — используем 0.1 ГБ как заглушку
+    if size_bytes == -1:
+        size_bytes = 0
     size_gb = size_bytes / (1024 ** 3) if size_bytes else 0.1  # минимум 0.1 ГБ
     
     if format_type == "sql":
@@ -127,7 +134,7 @@ def check_disk_space(ib_list: List[str], format_type: str = "dump", safety_margi
 
 def backup_ib(ib_name: str, format_type: str, dry_run: bool = False) -> Dict[str, any]:
     """
-    Создать бэкап одной информационной базы с адаптивным таймаутом.
+    Создать бэкап одной информационной базы с адаптивным таймаутом и точной диагностикой ошибок.
     """
     config = Config.load()
     cmd = ["--ib", ib_name, "--format", format_type]
@@ -136,8 +143,23 @@ def backup_ib(ib_name: str, format_type: str, dry_run: bool = False) -> Dict[str
         timeout = 300
         capture = True
     else:
-        size_bytes = get_ib_size(ib_name)
-        timeout = estimate_backup_timeout(ib_name, size_bytes)
+        # Предварительная проверка: существует ли ИБ?
+        size_check = get_ib_size(ib_name)
+        if size_check == -1:  # Специальный код: ИБ не найдена
+            return {
+                "success": False,
+                "ib_name": ib_name,
+                "format": format_type,
+                "stdout": "",
+                "stderr": (
+                    f"❌ ИБ «{ib_name}» не найдена в кластере БД 10.129.0.27:5432\n"
+                    f"   → Проверьте имя: ib_1c storage list-ibs\n"
+                    f"   → Или обновите список: ib_1c storage update-ib-list --confirm"
+                ),
+                "returncode": 1
+            }
+        
+        timeout = estimate_backup_timeout(ib_name, size_check if size_check and size_check > 0 else None)
         capture = False
 
     try:
@@ -159,10 +181,43 @@ def backup_ib(ib_name: str, format_type: str, dry_run: bool = False) -> Dict[str
             "returncode": -1
         }
 
+    # Улучшаем диагностику ошибок на основе содержимого stderr
+    if not result["success"]:
+        stderr = result.get("stderr", "").lower()
+        stdout = result.get("stdout", "").lower()
+        
+        # Ошибка: ИБ не найдена (в скрипте уже есть валидация, но на случай обхода)
+        if "не найдена в кластере бд" in stderr or "does not exist" in stderr or "database.*not found" in stderr or "база данных.*не существует" in stderr:
+            result["stderr"] = (
+                f"❌ ИБ «{ib_name}» не найдена в кластере БД 10.129.0.27:5432\n"
+                f"   → Проверьте имя: ib_1c storage list-ibs\n"
+                f"   → Или обновите список: ib_1c storage update-ib-list --confirm"
+            )
+        
+        # Ошибка: недостаточно места на диске
+        elif "нет места" in stderr or "no space" in stderr or "disk full" in stderr or "not enough space" in stderr:
+            result["stderr"] = f"❌ Недостаточно места на диске для бэкапа ИБ «{ib_name}»"
+        
+        # Ошибка: проблемы с подключением к БД
+        elif "connection" in stderr and ("failed" in stderr or "отказ" in stderr or "timeout" in stderr):
+            result["stderr"] = f"❌ Не удалось подключиться к кластеру БД 10.129.0.27:5432\n   → Проверьте сетевую доступность и статус СУБД"
+        
+        # Ошибка: проблемы с аутентификацией
+        elif "password" in stderr or "authentication" in stderr or "пароль" in stderr:
+            result["stderr"] = f"❌ Ошибка аутентификации при подключении к БД\n   → Проверьте файл .pgpass и права доступа"
+        
+        # Для остальных ошибок оставляем оригинальный вывод (но очищаем от технических деталей)
+        else:
+            # Оставляем только первую строку ошибки для краткости
+            original = result.get("stderr", "Неизвестная ошибка")
+            first_line = original.split('\n')[0] if '\n' in original else original
+            result["stderr"] = f"❌ Ошибка при бэкапе ИБ «{ib_name}»: {first_line}"
+    
     # Улучшаем диагностику при таймауте (для случая, когда исключение не было выброшено)
-    if not result["success"] and "Timeout expired" in result.get("stderr", ""):
-        size_gb = (size_bytes / (1024 ** 3)) if size_bytes else 0
-        size_info = f" (~{size_gb:.1f} ГБ)" if size_bytes and size_bytes > 0 else " (размер не определён)"
+    elif "Timeout expired" in result.get("stderr", ""):
+        size_bytes = get_ib_size(ib_name) or 0
+        size_gb = (size_bytes / (1024 ** 3)) if size_bytes and size_bytes > 0 else 0
+        size_info = f" (~{size_gb:.1f} ГБ)" if size_gb > 0 else " (размер не определён)"
         timeout_min = timeout // 60
         
         result["stderr"] = (

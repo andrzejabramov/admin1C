@@ -18,19 +18,39 @@ from core.config import load_ib_list
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Создать бэкап информационных баз 1С",
-        epilog="Примеры:\n"
-               "  ib_1c backup --format dump --ib artel_2025 oksana_2025\n"
-               "  ib_1c backup --format dump --all\n"
-               "  ib_1c backup --format dump --all --dry-run"
+        epilog="Примеры использования:\n"
+               "  ib_1c backup -f dump -I artel_2025 oksana_2025\n"
+               "  ib_1c backup -f dump -A\n"
+               "  ib_1c backup -f dump -A -n\n"
+               "  ib_1c backup --format sql --ib test_db",
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--format", choices=["dump", "sql"], required=True, help="Формат бэкапа")
+    parser.add_argument(
+        "-f", "--format",
+        choices=["dump", "sql"],
+        required=True,
+        help="Формат бэкапа: dump (PostgreSQL Custom) или sql (архивированный SQL)"
+    )
     
     # Взаимоисключающие аргументы: --ib ИЛИ --all
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--ib", nargs='+', metavar="ИМЯ", help="Имя ИБ (можно несколько)")
-    group.add_argument("--all", action="store_true", help="Бэкап всех ИБ из ib_list.conf")
+    group.add_argument(
+        "-I", "--ib",
+        nargs='+',
+        metavar="ИМЯ",
+        help="Имя ИБ (можно указать несколько через пробел)"
+    )
+    group.add_argument(
+        "-A", "--all",  # ← ЕДИНООБРАЗИЕ С RM: -A вместо -a
+        action="store_true",
+        help="Бэкап всех ИБ из ib_list.conf"
+    )
     
-    parser.add_argument("--dry-run", action="store_true", help="Симуляция без реального бэкапа")
+    parser.add_argument(
+        "-n", "--dry-run",
+        action="store_true",
+        help="Симуляция без реального создания бэкапа"
+    )
     
     parsed = parser.parse_args(args)
     
@@ -70,7 +90,7 @@ def main(args=None):
         if not check_result["sufficient"]:
             print("\n⚠️  Бэкап прерван из-за нехватки дискового пространства", file=sys.stderr)
             print("   Совет: очистите старые бэкапы перед повторной попыткой:", file=sys.stderr)
-            print("     ib_1c rm --ib ИМЯ --keep N", file=sys.stderr)
+            print("     ib_1c rm -I ИМЯ -k N", file=sys.stderr)
             return 1
     
     # === Выполнение бэкапа ===

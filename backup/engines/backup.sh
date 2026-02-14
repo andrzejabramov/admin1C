@@ -26,16 +26,37 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# === Валидация ===
+# === Валидация обязательных параметров ===
 [[ -z "${IB_NAME:-}" ]] && { echo "❌ --ib не указан" >&2; exit 1; }
 [[ -z "${FORMAT:-}" ]] && { echo "❌ --format не указан" >&2; exit 1; }
 [[ "$FORMAT" != "dump" && "$FORMAT" != "sql" ]] && { echo "❌ Формат должен быть: dump или sql" >&2; exit 1; }
+
+# === Валидация существования ИБ в PostgreSQL (ДО создания директории!) ===
+if ! PGPASSFILE="$PGPASS_FILE" $PSQL -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -tAc "SELECT 1 FROM pg_database WHERE datname = '$IB_NAME'" 2>/dev/null | grep -q "1"; then
+  echo "❌ ИБ '$IB_NAME' не найдена в кластере БД $PG_HOST:$PG_PORT" >&2
+  echo "   → Проверьте имя в ib_list.conf или выполните: ib_1c storage list-ibs" >&2
+  exit 1
+fi
 
 # === Создание директории бэкапа ===
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_DIR="$BACKUP_ROOT/$IB_NAME/$TIMESTAMP"
 mkdir -p "$BACKUP_DIR" || { echo "❌ Не удалось создать $BACKUP_DIR" >&2; exit 1; }
 log "📁 Директория: $BACKUP_DIR"
+
+# === Функция очистки при ошибке ===
+cleanup_on_error() {
+  local exit_code=$?
+  if [[ $exit_code -ne 0 ]] && [[ -n "${BACKUP_DIR:-}" ]] && [[ -d "$BACKUP_DIR" ]]; then
+    # Удаляем ТОЛЬКО если директория пустая или содержит только неполный бэкап
+    if [[ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]] || [[ ! -s "$BACKUP_DIR/backup.dump" 2>/dev/null && ! -s "$BACKUP_DIR/backup.sql.gz" 2>/dev/null ]]; then
+      log "🧹 Очистка временной директории после ошибки: $BACKUP_DIR"
+      rm -rf "$BACKUP_DIR" 2>/dev/null || true
+    fi
+  fi
+  exit $exit_code
+}
+trap cleanup_on_error EXIT
 
 # === Бэкап в формате .dump ===
 if [[ "$FORMAT" == "dump" ]]; then
@@ -48,29 +69,26 @@ if [[ "$FORMAT" == "dump" ]]; then
   
   # Выполняем pg_dump с прогрессом
   if [[ -n "$DB_SIZE" && "$DB_SIZE" -gt 0 ]]; then
-    PGPASSFILE="$PGPASS_FILE" $PG_DUMP -Fc -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" 2>/dev/null | \
+    if ! PGPASSFILE="$PGPASS_FILE" $PG_DUMP -Fc -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" 2>/dev/null | \
       pv -f -s "$DB_SIZE" | \
-      tee "$BACKUP_DIR/backup.dump" > /dev/null || {
-        log "❌ Ошибка записи: не удалось создать файл бэкапа"
-        rm -f "$BACKUP_DIR/backup.dump" 2>/dev/null
-        exit 1
-      }
+      tee "$BACKUP_DIR/backup.dump" > /dev/null; then
+      log "❌ Ошибка при создании бэкапа ИБ '$IB_NAME'"
+      exit 1
+    fi
   else
-    PGPASSFILE="$PGPASS_FILE" $PG_DUMP -Fc -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" 2>/dev/null | \
+    if ! PGPASSFILE="$PGPASS_FILE" $PG_DUMP -Fc -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" 2>/dev/null | \
       pv -f | \
-      tee "$BACKUP_DIR/backup.dump" > /dev/null || {
-        log "❌ Ошибка записи: не удалось создать файл бэкапа"
-        rm -f "$BACKUP_DIR/backup.dump" 2>/dev/null
-        exit 1
-      }
+      tee "$BACKUP_DIR/backup.dump" > /dev/null; then
+      log "❌ Ошибка при создании бэкапа ИБ '$IB_NAME'"
+      exit 1
+    fi
   fi
   
   echo ""
   
-  # === КРИТИЧЕСКАЯ ПРОВЕРКА: файл создан и не пустой ===
+  # === Проверка целостности файла ===
   if [[ ! -f "$BACKUP_DIR/backup.dump" ]] || [[ ! -s "$BACKUP_DIR/backup.dump" ]]; then
-    log "❌ Фатальная ошибка: файл бэкапа отсутствует или пустой (диск заполнен?)"
-    rm -f "$BACKUP_DIR/backup.dump" 2>/dev/null
+    log "❌ Фатальная ошибка: файл бэкапа отсутствует или пустой"
     exit 1
   fi
   
@@ -83,18 +101,16 @@ fi
 if [[ "$FORMAT" == "sql" ]]; then
   log "💾 Бэкап ИБ: $IB_NAME (формат: sql.gz)"
   
-  PGPASSFILE="$PGPASS_FILE" $PG_DUMP -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" --no-owner --no-privileges 2>/dev/null | \
+  if ! PGPASSFILE="$PGPASS_FILE" $PG_DUMP -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$IB_NAME" --no-owner --no-privileges 2>/dev/null | \
     gzip -c | \
-    tee "$BACKUP_DIR/backup.sql.gz" > /dev/null || {
-      log "❌ Ошибка записи: не удалось создать файл бэкапа"
-      rm -f "$BACKUP_DIR/backup.sql.gz" 2>/dev/null
-      exit 1
-    }
+    tee "$BACKUP_DIR/backup.sql.gz" > /dev/null; then
+    log "❌ Ошибка при создании бэкапа ИБ '$IB_NAME'"
+    exit 1
+  fi
   
   # Проверка целостности
   if [[ ! -f "$BACKUP_DIR/backup.sql.gz" ]] || [[ ! -s "$BACKUP_DIR/backup.sql.gz" ]]; then
     log "❌ Фатальная ошибка: файл бэкапа отсутствует или пустой"
-    rm -f "$BACKUP_DIR/backup.sql.gz" 2>/dev/null
     exit 1
   fi
   
