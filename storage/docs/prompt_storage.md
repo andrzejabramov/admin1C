@@ -1,4 +1,4 @@
-# 📄 `prompt_storage.md`
+# Промпт для воспроизведения сервиса `storage`
 
 ```
 You are an expert Python/Unix systems engineer. Design a read-only monitoring service for a 1C backup storage system with strict vertical domain architecture.
