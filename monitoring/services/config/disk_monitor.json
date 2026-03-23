@@ -1,0 +1,26 @@
+{
+  "mount_points": [
+    {
+      "path": "/",
+      "name": "vda1 (загрузочный)",
+      "warn_threshold": 75,
+      "critical_threshold": 85
+    },
+    {
+      "path": "/var/backups/1c",
+      "name": "vdb (архивы 1С)",
+      "warn_threshold": 80,
+      "critical_threshold": 90
+    }
+  ],
+  "email": {
+    "enabled": false,
+    "smtp_server": "smtp.yandex.ru",
+    "smtp_port": 465,
+    "use_ssl": true,
+    "login": "ya.npkap@yandex.ru",
+    "password": "",
+    "recipients": ["npkap@mail.ru"]
+  },
+  "cooldown_hours": 24
+}

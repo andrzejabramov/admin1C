@@ -1,0 +1,11 @@
+[Unit]
+Description=1C Disk Space Monitor (one-shot)
+After=network.target
+
+[Service]
+Type=oneshot
+User=andrey
+WorkingDirectory=/opt/1cv8/scripts/monitoring/services/bin
+ExecStart=/opt/1cv8/scripts/venv/bin/python /opt/1cv8/scripts/monitoring/services/bin/disk_monitor.py
+StandardOutput=append:/opt/1cv8/scripts/monitoring/logs/disk_monitor.log
+StandardError=append:/opt/1cv8/scripts/monitoring/logs/disk_monitor.log

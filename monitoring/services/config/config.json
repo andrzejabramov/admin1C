@@ -1,0 +1,6 @@
+{
+  "rac_path": "/opt/1cv8/x86_64/8.3.27.1989/rac",
+  "cluster_uuid": "60191967-9ef6-4a40-9d45-321bc9ca9e2f",
+  "ras_server": "localhost:1545",
+  "interval_seconds": 30
+}

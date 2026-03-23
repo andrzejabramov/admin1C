@@ -1,0 +1,11 @@
+[Unit]
+Description=Run disk monitor every hour
+Requires=disk-monitor.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

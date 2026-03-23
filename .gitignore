@@ -43,3 +43,6 @@ coverage.xml
 # Database configuration (sensitive data)
 engines/config/global.sh
 bak/
+.env
+__pycache__/
+*.pyc

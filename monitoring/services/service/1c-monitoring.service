@@ -1,0 +1,16 @@
+[Unit]
+Description=1C Session Monitoring Collector
+After=network.target
+
+[Service]
+Type=simple
+User=andrey
+WorkingDirectory=/opt/1cv8/scripts/monitoring/services/bin
+ExecStart=/opt/1cv8/scripts/venv/bin/python /opt/1cv8/scripts/monitoring/services/bin/collector.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/1cv8/scripts/monitoring/logs/collector.log
+StandardError=append:/opt/1cv8/scripts/monitoring/logs/collector.log
+
+[Install]
+WantedBy=multi-user.target
