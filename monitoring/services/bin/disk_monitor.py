@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Disk Monitor — проверка места на дисках + email алерты"""
 
-import json, smtplib, shutil, sys, logging
+import json, smtplib, shutil, sys, logging, os
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -10,11 +10,23 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SERVICES_DIR = SCRIPT_DIR.parent
-MONITORING_DIR = SERVICES_DIR.parent
-
+MONITORING_DIR = SERVICES_DIR.parent.parent.parent  # /opt/1cv8/scripts
+ENV_FILE = Path("/opt/1cv8/scripts/.env")
 CONFIG_FILE = SERVICES_DIR / "config" / "disk_monitor.json"
-LOG_FILE = MONITORING_DIR / "logs" / "disk_monitor.log"
-STATE_FILE = MONITORING_DIR / "data" / "disk_state.json"
+LOG_FILE = Path("/opt/1cv8/scripts/monitoring/logs/disk_monitor.log")
+STATE_FILE = Path("/opt/1cv8/scripts/monitoring/data/disk_state.json")
+
+# Загрузка .env
+def load_env():
+    if ENV_FILE.exists():
+        with open(ENV_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, val = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), val.strip())
+
+load_env()
 
 DEFAULT_CONFIG = {
     "mount_points": [
@@ -26,9 +38,9 @@ DEFAULT_CONFIG = {
         "smtp_server": "smtp.yandex.ru",
         "smtp_port": 465,
         "use_ssl": True,
-        "login": "your_email@yandex.ru",
-        "password": "your_app_password",
-        "recipients": ["your_email@yandex.ru"]
+        "login": os.getenv("MONITORING_EMAIL_LOGIN", ""),
+        "password": os.getenv("MONITORING_EMAIL_PASSWORD", ""),
+        "recipients": os.getenv("MONITORING_EMAIL_RECIPIENTS", "").split(",")
     },
     "cooldown_hours": 24
 }
@@ -44,7 +56,12 @@ logger = setup_logging()
 def load_config():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            cfg = json.load(f)
+        # Переопределяем секреты из .env
+        cfg["email"]["login"] = os.getenv("MONITORING_EMAIL_LOGIN", cfg["email"].get("login", ""))
+        cfg["email"]["password"] = os.getenv("MONITORING_EMAIL_PASSWORD", cfg["email"].get("password", ""))
+        cfg["email"]["recipients"] = os.getenv("MONITORING_EMAIL_RECIPIENTS", ",".join(cfg["email"].get("recipients", []))).split(",")
+        return cfg
     else:
         logger.warning(f"Конфиг не найден: {CONFIG_FILE}")
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -81,8 +98,8 @@ def should_send_alert(state, key, cooldown):
 
 def send_email(config, alerts):
     cfg = config["email"]
-    if not cfg.get("enabled"):
-        logger.info("Email отключён")
+    if not cfg.get("enabled") or not cfg.get("password"):
+        logger.info("Email отключён или нет пароля")
         return False
     subj = f"⚠️ Алерт дисков: {len(alerts)} проблем"
     body = "Проблемы с дисками:\n\n"
@@ -114,7 +131,7 @@ def main():
     for mp in config.get("mount_points", DEFAULT_CONFIG["mount_points"]):
         usage = get_disk_usage(mp["path"])
         if not usage: continue
-        logger.info(f"📊 {mp['name']}: {usage['percent']}% ({usage['free_gb']} ГБ свободно)")
+        logger.info(f"�� {mp['name']}: {usage['percent']}% ({usage['free_gb']} ГБ свободно)")
         level, threshold = None, None
         if usage['percent'] >= mp.get("critical_threshold", 90):
             level, threshold = "critical", mp.get("critical_threshold", 90)

@@ -14,7 +14,7 @@
     }
   ],
   "email": {
-    "enabled": false,
+    "enabled": true,
     "smtp_server": "smtp.yandex.ru",
     "smtp_port": 465,
     "use_ssl": true,

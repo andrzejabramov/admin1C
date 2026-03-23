@@ -46,3 +46,5 @@ bak/
 .env
 __pycache__/
 *.pyc
+monitoring/data/*.db
+monitoring/data/*.json
